@@ -14,7 +14,7 @@ export default function Admin({ onLogout }) {
   const [checkins, setCheckins] = useState([]);
   const [certificados, setCertificados] = useState([]);
 
-  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "19:00", horario_fim: "21:00" });
+  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "18:00", horario_fim: "21:00" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
   const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
@@ -55,7 +55,20 @@ export default function Admin({ onLogout }) {
       for (const da of datasValidas) {
         await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: da.descricao } });
       }
-      setNovaTurma({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "19:00", horario_fim: "21:00" });
+      // Auto-create Google Calendar events
+      try {
+        const calRes = await fetch("/api/criar-eventos-calendar", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            turma: { nome: novaTurma.nome, curso: novaTurma.curso, horario_inicio: novaTurma.horario_inicio, horario_fim: novaTurma.horario_fim },
+            aulas: datasValidas.map((d) => ({ data: d.data, descricao: d.descricao })),
+          }),
+        });
+        const calData = await calRes.json();
+        if (calData.ok) alert(`Turma criada! ${calData.created} aula(s) adicionadas ao Google Calendar 📅`);
+        else alert("Turma criada! (Google Calendar: " + (calData.error || "não conectado") + ")");
+      } catch { alert("Turma criada! (Google Calendar não disponível)"); }
+      setNovaTurma({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "18:00", horario_fim: "21:00" });
       setDatasAulas([{ data: "", descricao: "" }]);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
@@ -201,6 +214,30 @@ export default function Admin({ onLogout }) {
       ? `📚 *${turma.curso} — ${turma.nome}*\n\n✅ Hora do check-in! Registre sua presença na aula de hoje:\n\n👉 ${link}\n\nÉ rápido: abra o link, digite seu celular e confirme. Bom curso! 🚀`
       : `📚 *${turma.curso} — ${turma.nome}*\n\nLink de check-in para a próxima aula:\n\n👉 ${link}\n\nAbra no dia da aula, digite seu celular e confirme sua presença. 📱`;
     navigator.clipboard.writeText(msg).then(() => alert("Mensagem copiada! Cole no WhatsApp.")).catch(() => prompt("Copie:", msg));
+  };
+
+  // --- Google Calendar ---
+  const addToCalendar = (turmaId) => {
+    const turma = turmas.find((t) => t.id === turmaId);
+    if (!turma) return;
+    const aulasT = aulasDaTurma(turmaId);
+    if (!aulasT.length) { alert("Nenhuma aula cadastrada."); return; }
+    const hi = turma.horario_inicio || "19:00";
+    const hf = turma.horario_fim || "21:00";
+
+    // Open each event in a new tab
+    aulasT.forEach((aula, i) => {
+      const [y, m, d] = aula.data_aula.split("-");
+      const startDate = `${y}${m}${d}T${hi.replace(":", "")}00`;
+      const endDate = `${y}${m}${d}T${hf.replace(":", "")}00`;
+      const title = encodeURIComponent(`${turma.curso} — Aula ${i + 1}${aula.descricao ? " (" + aula.descricao + ")" : ""}`);
+      const details = encodeURIComponent(`${turma.nome}\nCheck-in: ${window.location.origin}/c/${turmaId}`);
+      const location = encodeURIComponent("João Pessoa — PB");
+      const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${startDate}/${endDate}&details=${details}&location=${location}&ctz=America/Recife`;
+
+      setTimeout(() => window.open(url, "_blank"), i * 500);
+    });
+    alert(`${aulasT.length} aula(s) sendo adicionadas ao Google Calendar. Confirme cada uma na aba que abrir.`);
   };
 
   // --- Lembrete de aula por e-mail ---
@@ -651,6 +688,10 @@ export default function Admin({ onLogout }) {
                           <button onClick={(e) => { e.stopPropagation(); copiarWhatsApp(t.id); }}
                             style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(37,211,102,0.12)", color: "#25d366", border: "1px solid rgba(37,211,102,0.25)", borderRadius: 8, cursor: "pointer" }}>
                             💬 WHATSAPP
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); addToCalendar(t.id); }}
+                            style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(66,133,244,0.12)", color: "#4285f4", border: "1px solid rgba(66,133,244,0.25)", borderRadius: 8, cursor: "pointer" }}>
+                            📅 CALENDAR
                           </button>
                           <button onClick={(e) => { e.stopPropagation(); navigate(`/c/${t.id}`); }}
                             style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.12)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 8, cursor: "pointer" }}>
@@ -1110,6 +1151,21 @@ export default function Admin({ onLogout }) {
               <p style={{ color: "#2ecc71", fontSize: 12, fontWeight: 600, margin: 0 }}>
                 💡 No Vercel: vá em Settings → Environment Variables e adicione VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY.
               </p>
+            </div>
+
+            {/* Google Calendar */}
+            <div style={{ marginTop: 28, padding: 18, background: "rgba(255,255,255,0.02)", borderRadius: 12, border: "1px solid rgba(66,133,244,0.15)" }}>
+              <h3 style={{ color: "#4285f4", fontSize: 13, fontWeight: 700, margin: "0 0 10px", display: "flex", alignItems: "center", gap: 8 }}>📅 Google Calendar</h3>
+              <p style={{ color: "#888", fontSize: 12, lineHeight: 1.7, margin: "0 0 14px" }}>
+                Conecte seu Google Calendar para que as aulas sejam adicionadas automaticamente ao criar uma turma.
+              </p>
+              <a href="/api/google-auth" style={{
+                display: "inline-flex", alignItems: "center", gap: 8, padding: "10px 20px",
+                fontSize: 13, fontFamily: "'Montserrat', sans-serif", fontWeight: 700,
+                background: "rgba(66,133,244,0.15)", color: "#4285f4",
+                border: "1px solid rgba(66,133,244,0.3)", borderRadius: 8,
+                textDecoration: "none", cursor: "pointer",
+              }}>📅 Conectar Google Calendar</a>
             </div>
           </div>
         )}
