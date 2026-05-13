@@ -22,6 +22,7 @@ export default function Admin() {
   const [certTurma, setCertTurma] = useState("");
   const [certCarga, setCertCarga] = useState("30");
   const [gerando, setGerando] = useState(false);
+  const [editando, setEditando] = useState(null); // { id, nome, celular, email }
 
   const connected = isConnected();
 
@@ -64,6 +65,19 @@ export default function Admin() {
     try {
       await query("alunos", { method: "POST", body: { ...novoAluno, celular: cel } });
       setNovoAluno({ nome: "", celular: "", email: "", turma_id: "" });
+      carregarDados();
+    } catch (err) { alert("Erro: " + err.message); }
+  };
+
+  const salvarEdicao = async () => {
+    if (!editando) return;
+    try {
+      await query("alunos", {
+        method: "PATCH",
+        qs: `?id=eq.${editando.id}`,
+        body: { nome: editando.nome, celular: cleanPhone(editando.celular), email: editando.email },
+      });
+      setEditando(null);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
   };
@@ -249,19 +263,38 @@ export default function Admin() {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
-                    <tr>{["Nome", "Celular", "E-mail", "Turma"].map((h) => (
-                      <th key={h} style={{ textAlign: "left", padding: "10px 16px", color: "#C8A96E", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(200,169,110,0.12)" }}>{h}</th>
+                    <tr>{["Nome", "Celular", "E-mail", "Turma", ""].map((h) => (
+                      <th key={h || "acoes"} style={{ textAlign: "left", padding: "10px 16px", color: "#C8A96E", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(200,169,110,0.12)" }}>{h}</th>
                     ))}</tr>
                   </thead>
                   <tbody>
-                    {alunos.map((a) => (
+                    {alunos.map((a) => {
+                      const isEdit = editando?.id === a.id;
+                      return (
                       <tr key={a.id}>
-                        <td style={{ padding: "11px 16px", color: "#F1EFE8", fontSize: 13, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.nome}</td>
-                        <td style={{ padding: "11px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)", fontVariantNumeric: "tabular-nums" }}>{formatPhone(a.celular)}</td>
-                        <td style={{ padding: "11px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.email || "—"}</td>
-                        <td style={{ padding: "11px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.turmas?.nome || "—"}</td>
+                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.nome} onChange={(e) => setEditando({ ...editando, nome: e.target.value })} /> : <span style={{ color: "#F1EFE8", fontSize: 13, fontWeight: 600 }}>{a.nome}</span>}
+                        </td>
+                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12, width: 150 }} value={editando.celular} onChange={(e) => setEditando({ ...editando, celular: formatPhone(e.target.value) })} /> : <span style={{ color: "#888", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{formatPhone(a.celular)}</span>}
+                        </td>
+                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                          {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.email} onChange={(e) => setEditando({ ...editando, email: e.target.value })} placeholder="email@..." /> : <span style={{ color: "#888", fontSize: 12 }}>{a.email || "—"}</span>}
+                        </td>
+                        <td style={{ padding: "8px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.turmas?.nome || "—"}</td>
+                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}>
+                          {isEdit ? (
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button onClick={salvarEdicao} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.15)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 6, cursor: "pointer" }}>✓ Salvar</button>
+                              <button onClick={() => setEditando(null)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "transparent", color: "#888", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, cursor: "pointer" }}>✕</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                          )}
+                        </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
