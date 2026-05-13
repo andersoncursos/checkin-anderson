@@ -1,20 +1,85 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams } from "react-router-dom";
 import { query, isConnected } from "../supabase";
-import { formatPhone, cleanPhone, fmtDateFull, weekday, todayStr } from "../utils";
+import { formatPhone, cleanPhone, fmtDateFull, weekday, todayStr, fmtDate } from "../utils";
+
+// ===== Confetti animation =====
+function Confetti({ active }) {
+  const canvasRef = useRef(null);
+  useEffect(() => {
+    if (!active) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const colors = ["#C8A96E", "#e0c68a", "#27ae60", "#2ecc71", "#F1EFE8", "#3498db", "#f39c12"];
+    const pieces = [];
+    for (let i = 0; i < 80; i++) {
+      pieces.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height - canvas.height,
+        w: Math.random() * 8 + 4,
+        h: Math.random() * 6 + 3,
+        color: colors[Math.floor(Math.random() * colors.length)],
+        vy: Math.random() * 3 + 2,
+        vx: Math.random() * 2 - 1,
+        rot: Math.random() * 360,
+        vr: Math.random() * 6 - 3,
+        opacity: 1,
+      });
+    }
+
+    let frame = 0;
+    const maxFrames = 120;
+    const animate = () => {
+      frame++;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      pieces.forEach((p) => {
+        p.y += p.vy;
+        p.x += p.vx;
+        p.rot += p.vr;
+        p.vy += 0.05;
+        if (frame > maxFrames - 30) p.opacity = Math.max(0, p.opacity - 0.03);
+        ctx.save();
+        ctx.globalAlpha = p.opacity;
+        ctx.translate(p.x, p.y);
+        ctx.rotate((p.rot * Math.PI) / 180);
+        ctx.fillStyle = p.color;
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+        ctx.restore();
+      });
+      if (frame < maxFrames) requestAnimationFrame(animate);
+    };
+    animate();
+  }, [active]);
+
+  if (!active) return null;
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: "fixed", top: 0, left: 0, width: "100vw", height: "100vh",
+        pointerEvents: "none", zIndex: 9999,
+      }}
+    />
+  );
+}
 
 export default function Checkin() {
   const { turmaId } = useParams();
-  const [step, setStep] = useState("phone"); // phone | confirm | done
+  const [step, setStep] = useState("phone");
   const [phone, setPhone] = useState("");
   const [aluno, setAluno] = useState(null);
   const [turma, setTurma] = useState(null);
   const [aula, setAula] = useState(null);
+  const [proxAula, setProxAula] = useState(null);
   const [error, setError] = useState("");
   const [already, setAlready] = useState(false);
   const [noClass, setNoClass] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
 
-  // Load turma + today's aula
   useEffect(() => {
     if (!isConnected() || !turmaId) return;
     query("turmas", { qs: `?id=eq.${turmaId}&select=*` })
@@ -25,7 +90,13 @@ export default function Checkin() {
     query("aulas", { qs: `?turma_id=eq.${turmaId}&data_aula=eq.${hoje}&select=*` })
       .then((d) => {
         if (d[0]) setAula(d[0]);
-        else setNoClass(true);
+        else {
+          setNoClass(true);
+          // Find next class
+          query("aulas", { qs: `?turma_id=eq.${turmaId}&data_aula=gt.${hoje}&select=*&order=data_aula.asc&limit=1` })
+            .then((next) => next[0] && setProxAula(next[0]))
+            .catch(() => {});
+        }
       })
       .catch(() => setNoClass(true));
   }, [turmaId]);
@@ -33,44 +104,28 @@ export default function Checkin() {
   const buscarAluno = async () => {
     setError("");
     const cel = cleanPhone(phone);
-    if (cel.length < 10) {
-      setError("Digite um número válido com DDD.");
-      return;
-    }
+    if (cel.length < 10) { setError("Digite um número válido com DDD."); return; }
     try {
-      const data = await query("alunos", {
-        qs: `?celular=eq.${cel}&turma_id=eq.${turmaId}&select=*`,
-      });
-      if (!data.length) {
-        setError("Número não encontrado nessa turma. Verifique com o professor.");
-        return;
-      }
+      const data = await query("alunos", { qs: `?celular=eq.${cel}&turma_id=eq.${turmaId}&select=*` });
+      if (!data.length) { setError("Número não encontrado nessa turma. Verifique com o professor."); return; }
       setAluno(data[0]);
       setStep("confirm");
-    } catch {
-      setError("Erro ao buscar. Tente novamente.");
-    }
+    } catch { setError("Erro ao buscar. Tente novamente."); }
   };
 
   const confirmarCheckin = async () => {
-    if (!aula) {
-      setError("Nenhuma aula cadastrada para hoje nessa turma.");
-      return;
-    }
+    if (!aula) { setError("Nenhuma aula cadastrada para hoje nessa turma."); return; }
     try {
-      await query("checkins", {
-        method: "POST",
-        body: { aluno_id: aluno.id, aula_id: aula.id, turma_id: turmaId },
-      });
+      await query("checkins", { method: "POST", body: { aluno_id: aluno.id, aula_id: aula.id, turma_id: turmaId } });
       setStep("done");
       setAlready(false);
+      setShowConfetti(true);
+      setTimeout(() => setShowConfetti(false), 3000);
     } catch (err) {
       if (err.message.includes("duplicate") || err.message.includes("unique")) {
         setStep("done");
         setAlready(true);
-      } else {
-        setError("Erro ao registrar. Tente novamente.");
-      }
+      } else { setError("Erro ao registrar. Tente novamente."); }
     }
   };
 
@@ -100,6 +155,7 @@ export default function Checkin() {
 
   return (
     <div style={s.page}>
+      <Confetti active={showConfetti} />
       <div style={s.wrap}>
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
@@ -135,7 +191,7 @@ export default function Checkin() {
           <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>@professorjoseanderson.ads</p>
         </div>
 
-        {/* No class today */}
+        {/* No class today - improved with next class info */}
         {noClass && !aula && (
           <div style={{ ...s.card, padding: "36px 24px" }}>
             <div style={{
@@ -146,22 +202,46 @@ export default function Checkin() {
               Sem aula hoje
             </h2>
             <p style={{ color: "#999", fontSize: 13, lineHeight: 1.7 }}>
-              Não há aula cadastrada para hoje ({fmtDateFull(todayStr())}) nessa turma.<br />
-              Verifique a data com o professor.
+              Não há aula de <span style={{ color: "#C8A96E", fontWeight: 600 }}>{turma?.curso || "curso"}</span> cadastrada para hoje ({fmtDateFull(todayStr())}).
             </p>
+            {proxAula ? (
+              <div style={{
+                marginTop: 18, padding: "14px 18px", background: "rgba(200,169,110,0.08)",
+                borderRadius: 10, border: "1px solid rgba(200,169,110,0.15)",
+              }}>
+                <p style={{ color: "#888", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 6px" }}>
+                  Próxima aula
+                </p>
+                <p style={{ color: "#C8A96E", fontSize: 16, fontWeight: 700, margin: "0 0 4px" }}>
+                  {fmtDateFull(proxAula.data_aula)} ({weekday(proxAula.data_aula)})
+                </p>
+                {proxAula.descricao && (
+                  <p style={{ color: "#999", fontSize: 12, margin: 0 }}>{proxAula.descricao}</p>
+                )}
+              </div>
+            ) : (
+              <p style={{ color: "#666", fontSize: 12, marginTop: 12 }}>
+                Não há mais aulas programadas nessa turma.
+              </p>
+            )}
           </div>
         )}
 
-        {/* Phone step */}
+        {/* Phone step - personalized welcome */}
         {step === "phone" && !noClass && (
           <div style={s.card}>
+            <p style={{ color: "#C8A96E", fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
+              Bem-vindo(a)! 👋
+            </p>
             <p style={{ color: "#ddd", fontSize: 14, marginBottom: 22, lineHeight: 1.7 }}>
-              Digite seu número de celular<br />(o mesmo do WhatsApp):
+              {turma ? (
+                <>Marque sua presença na aula de <span style={{ color: "#C8A96E", fontWeight: 600 }}>{turma.curso}</span>.<br />Digite seu número de celular:</>
+              ) : (
+                <>Digite seu número de celular<br />(o mesmo do WhatsApp):</>
+              )}
             </p>
             <input
-              type="tel"
-              inputMode="numeric"
-              placeholder="(83) 99999-9999"
+              type="tel" inputMode="numeric" placeholder="(83) 99999-9999"
               value={phone}
               onChange={(e) => setPhone(formatPhone(e.target.value))}
               onKeyDown={(e) => e.key === "Enter" && buscarAluno()}
@@ -193,7 +273,7 @@ export default function Checkin() {
               {aluno.nome}
             </h2>
             <p style={{ color: "#999", fontSize: 13, marginBottom: 24 }}>
-              É você? Confirme sua presença.
+              É você? Confirme sua presença em <span style={{ color: "#C8A96E" }}>{turma?.curso}</span>.
             </p>
             {error && <p style={{ color: "#e74c3c", fontSize: 13, marginBottom: 12 }}>{error}</p>}
             <div style={{ display: "flex", gap: 12 }}>
@@ -220,36 +300,54 @@ export default function Checkin() {
           </div>
         )}
 
-        {/* Done step */}
+        {/* Done step - with confetti for new checkins */}
         {step === "done" && (
           <div style={{ ...s.card, padding: "36px 24px" }}>
             <div style={{
-              width: 72, height: 72, margin: "0 auto 16px",
+              width: 80, height: 80, margin: "0 auto 16px",
               background: already ? "rgba(200,169,110,0.12)" : "linear-gradient(135deg, #27ae60, #2ecc71)",
               borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 36, boxShadow: already ? "none" : "0 4px 20px rgba(39,174,96,0.3)",
+              fontSize: 40, boxShadow: already ? "none" : "0 4px 24px rgba(39,174,96,0.35)",
+              animation: already ? "none" : "pulse 0.6s ease-out",
             }}>
               {already ? "📋" : "✅"}
             </div>
-            <h2 style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 20, margin: "0 0 8px" }}>
+            <h2 style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 22, margin: "0 0 10px" }}>
               {already ? "Presença já registrada!" : "Presença confirmada!"}
             </h2>
-            <p style={{ color: "#999", fontSize: 14, lineHeight: 1.6 }}>
+            <p style={{ color: "#bbb", fontSize: 15, lineHeight: 1.6, marginBottom: 6 }}>
               {already
-                ? `${aluno?.nome}, seu check-in de hoje já estava feito.`
-                : `${aluno?.nome}, presença registrada com sucesso.`}
+                ? <>{aluno?.nome}, seu check-in de hoje já estava feito.</>
+                : <><span style={{ fontWeight: 700, color: "#F1EFE8" }}>{aluno?.nome}</span>, sua presença foi registrada com sucesso!</>}
             </p>
             {aula && (
-              <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>
-                {fmtDateFull(aula.data_aula)} — {aula.descricao || "Aula do dia"}
+              <p style={{ color: "#666", fontSize: 12, marginTop: 6 }}>
+                {fmtDateFull(aula.data_aula)} — {aula.descricao || turma?.curso || "Aula do dia"}
               </p>
             )}
-            <p style={{ color: "#C8A96E", fontSize: 13, marginTop: 20, fontWeight: 600 }}>
-              Bom curso! 🚀
-            </p>
+            <div style={{
+              marginTop: 20, padding: "12px 16px", background: "rgba(200,169,110,0.06)",
+              borderRadius: 10, border: "1px solid rgba(200,169,110,0.1)",
+            }}>
+              <p style={{ color: "#C8A96E", fontSize: 14, fontWeight: 700, margin: 0 }}>
+                {already ? "Tudo certo! 👍" : "Bom curso! 🚀"}
+              </p>
+              {turma && !already && (
+                <p style={{ color: "#888", fontSize: 11, marginTop: 4, margin: "4px 0 0" }}>
+                  {turma.curso} — {turma.nome}
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
+      <style>{`
+        @keyframes pulse {
+          0% { transform: scale(0.7); opacity: 0.5; }
+          50% { transform: scale(1.1); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
   );
 }
