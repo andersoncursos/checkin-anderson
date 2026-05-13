@@ -2,12 +2,12 @@ import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { query, isConnected } from "../supabase";
 import { SQL_SETUP } from "../sql";
-import { formatPhone, cleanPhone, fmtDate, fmtDateFull, weekday } from "../utils";
+import { formatPhone, cleanPhone, fmtDate, fmtDateFull, weekday, todayStr } from "../utils";
 import { gerarCertificadoPDF, gerarCodigo, fmtDateBR } from "../certificado";
 
 export default function Admin({ onLogout }) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("turmas");
+  const [tab, setTab] = useState("dashboard");
   const [turmas, setTurmas] = useState([]);
   const [aulas, setAulas] = useState([]);
   const [alunos, setAlunos] = useState([]);
@@ -82,6 +82,58 @@ export default function Admin({ onLogout }) {
     } catch (err) { alert("Erro: " + err.message); }
   };
 
+  // --- Excluir ---
+  const excluirTurma = async (id) => {
+    if (!confirm("Tem certeza que deseja excluir esta turma? Todos os dados (aulas, check-ins, certificados) serão perdidos.")) return;
+    try {
+      await query("checkins", { method: "DELETE", qs: `?turma_id=eq.${id}` });
+      await query("certificados", { method: "DELETE", qs: `?turma_id=eq.${id}` });
+      await query("alunos", { method: "DELETE", qs: `?turma_id=eq.${id}` });
+      await query("aulas", { method: "DELETE", qs: `?turma_id=eq.${id}` });
+      await query("turmas", { method: "DELETE", qs: `?id=eq.${id}` });
+      carregarDados();
+    } catch (err) { alert("Erro: " + err.message); }
+  };
+
+  const excluirAluno = async (id) => {
+    if (!confirm("Excluir este aluno?")) return;
+    try {
+      await query("checkins", { method: "DELETE", qs: `?aluno_id=eq.${id}` });
+      await query("certificados", { method: "DELETE", qs: `?aluno_id=eq.${id}` });
+      await query("alunos", { method: "DELETE", qs: `?id=eq.${id}` });
+      carregarDados();
+    } catch (err) { alert("Erro: " + err.message); }
+  };
+
+  // --- Presença manual ---
+  const toggleCheckin = async (alunoId, aulaId, turmaId) => {
+    const existe = checkins.find((c) => c.aluno_id === alunoId && c.aula_id === aulaId);
+    try {
+      if (existe) {
+        await query("checkins", { method: "DELETE", qs: `?id=eq.${existe.id}` });
+      } else {
+        await query("checkins", { method: "POST", body: { aluno_id: alunoId, aula_id: aulaId, turma_id: turmaId } });
+      }
+      carregarDados();
+    } catch (err) { alert("Erro: " + err.message); }
+  };
+
+  // --- Finalizar turma ---
+  const finalizarTurma = async (id) => {
+    if (!confirm("Finalizar esta turma? Ela será movida para o histórico.")) return;
+    try {
+      await query("turmas", { method: "PATCH", qs: `?id=eq.${id}`, body: { finalizada: true } });
+      carregarDados();
+    } catch (err) { alert("Erro: " + err.message); }
+  };
+
+  const reativarTurma = async (id) => {
+    try {
+      await query("turmas", { method: "PATCH", qs: `?id=eq.${id}`, body: { finalizada: false } });
+      carregarDados();
+    } catch (err) { alert("Erro: " + err.message); }
+  };
+
   // --- Datas ---
   const addDataAula = () => setDatasAulas([...datasAulas, { data: "", descricao: "" }]);
   const updateDataAula = (i, field, val) => { const c = [...datasAulas]; c[i][field] = val; setDatasAulas(c); };
@@ -92,6 +144,16 @@ export default function Admin({ onLogout }) {
   const alunosDaTurma = (tid) => alunos.filter((a) => a.turma_id === tid).sort((a, b) => a.nome.localeCompare(b.nome));
   const temCheckin = (alunoId, aulaId) => checkins.some((c) => c.aluno_id === alunoId && c.aula_id === aulaId);
   const turmasFiltradas = filtroTurma ? turmas.filter((t) => t.id === filtroTurma) : turmas;
+  const turmasAtivas = turmas.filter((t) => !t.finalizada);
+  const turmasFinalizadas = turmas.filter((t) => t.finalizada);
+
+  // --- Dashboard helpers ---
+  const hoje = todayStr();
+  const aulasHoje = aulas.filter((a) => a.data_aula === hoje);
+  const checkinsHoje = checkins.filter((c) => {
+    const aulaHoje = aulasHoje.find((a) => a.id === c.aula_id);
+    return !!aulaHoje;
+  });
 
   // --- Copiar link ---
   const copiarLink = (turmaId) => {
@@ -103,6 +165,7 @@ export default function Admin({ onLogout }) {
 
   // --- Tabs ---
   const tabs = [
+    { id: "dashboard", label: "Dashboard", icon: "🏠" },
     { id: "turmas", label: "Turmas", icon: "📚" },
     { id: "alunos", label: "Alunos", icon: "👥" },
     { id: "relatorio", label: "Presença", icon: "📊" },
@@ -168,6 +231,110 @@ export default function Admin({ onLogout }) {
 
       <div style={{ padding: 24, maxWidth: 960, margin: "0 auto" }}>
 
+        {/* ========== DASHBOARD ========== */}
+        {tab === "dashboard" && (
+          <div>
+            <h2 style={{ color: "#F1EFE8", fontSize: 15, fontWeight: 700, marginBottom: 20 }}>Dashboard</h2>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginBottom: 28 }}>
+              {[
+                { label: "Turmas Ativas", value: turmasAtivas.length, icon: "📚", color: "#C8A96E" },
+                { label: "Aulas Hoje", value: aulasHoje.length, icon: "📅", color: "#3498db" },
+                { label: "Total de Alunos", value: alunos.length, icon: "👥", color: "#2ecc71" },
+                { label: "Check-ins Hoje", value: checkinsHoje.length, icon: "✅", color: "#27ae60" },
+              ].map((card, i) => (
+                <div key={i} style={{
+                  background: "rgba(255,255,255,0.025)", borderRadius: 12, padding: "20px 18px",
+                  border: "1px solid rgba(200,169,110,0.08)",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 24 }}>{card.icon}</span>
+                    <span style={{ color: card.color, fontSize: 28, fontWeight: 800 }}>{card.value}</span>
+                  </div>
+                  <p style={{ color: "#888", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: 0 }}>{card.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Aulas do dia */}
+            {aulasHoje.length > 0 && (
+              <div style={{ marginBottom: 24 }}>
+                <h3 style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📅 Aulas de Hoje ({fmtDateFull(hoje)})</h3>
+                {aulasHoje.map((aula) => {
+                  const turma = turmas.find((t) => t.id === aula.turma_id);
+                  const alunosT = alunosDaTurma(aula.turma_id);
+                  const presentes = alunosT.filter((al) => checkins.some((c) => c.aluno_id === al.id && c.aula_id === aula.id)).length;
+                  return (
+                    <div key={aula.id} style={{
+                      background: "rgba(255,255,255,0.025)", borderRadius: 10, padding: "14px 18px",
+                      border: "1px solid rgba(200,169,110,0.08)", marginBottom: 8,
+                      display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10,
+                    }}>
+                      <div>
+                        <span style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 14 }}>{turma?.nome}</span>
+                        <span style={{ color: "#C8A96E", fontSize: 12, marginLeft: 8 }}>{turma?.curso}</span>
+                        {aula.descricao && <span style={{ color: "#666", fontSize: 11, marginLeft: 8 }}>— {aula.descricao}</span>}
+                      </div>
+                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                        <span style={{ color: presentes > 0 ? "#2ecc71" : "#555", fontSize: 13, fontWeight: 700 }}>{presentes}/{alunosT.length} presentes</span>
+                        <button onClick={() => copiarLink(aula.turma_id)} style={{
+                          padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700,
+                          background: "rgba(200,169,110,0.12)", color: "#C8A96E",
+                          border: "1px solid rgba(200,169,110,0.25)", borderRadius: 6, cursor: "pointer",
+                        }}>📋 Link</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Turmas ativas resumo */}
+            {turmasAtivas.length > 0 && (
+              <div>
+                <h3 style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📚 Turmas Ativas</h3>
+                {turmasAtivas.map((t) => {
+                  const aulasT = aulasDaTurma(t.id);
+                  const alunosT = alunosDaTurma(t.id);
+                  const proxAula = aulasT.find((a) => a.data_aula >= hoje);
+                  return (
+                    <div key={t.id} style={{
+                      background: "rgba(255,255,255,0.025)", borderRadius: 10, padding: "12px 18px",
+                      border: "1px solid rgba(200,169,110,0.08)", marginBottom: 6,
+                      display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8,
+                    }}>
+                      <div>
+                        <span style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 13 }}>{t.nome}</span>
+                        <span style={{ color: "#888", fontSize: 11, marginLeft: 8 }}>{t.curso} · {alunosT.length} alunos · {aulasT.length} aulas</span>
+                      </div>
+                      {proxAula && <span style={{ color: "#555", fontSize: 11 }}>Próxima: {fmtDate(proxAula.data_aula)} ({weekday(proxAula.data_aula)})</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {turmasFinalizadas.length > 0 && (
+              <div style={{ marginTop: 24 }}>
+                <h3 style={{ color: "#888", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📁 Histórico ({turmasFinalizadas.length})</h3>
+                {turmasFinalizadas.map((t) => (
+                  <div key={t.id} style={{
+                    background: "rgba(255,255,255,0.015)", borderRadius: 10, padding: "10px 18px",
+                    border: "1px solid rgba(255,255,255,0.04)", marginBottom: 4,
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                  }}>
+                    <span style={{ color: "#666", fontSize: 12 }}>{t.nome} — {t.curso}</span>
+                    <button onClick={() => reativarTurma(t.id)} style={{
+                      padding: "4px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif",
+                      fontWeight: 600, background: "transparent", color: "#555",
+                      border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, cursor: "pointer",
+                    }}>Reativar</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ========== TURMAS ========== */}
         {tab === "turmas" && (
           <div>
@@ -226,6 +393,14 @@ export default function Admin({ onLogout }) {
                           <button onClick={(e) => { e.stopPropagation(); navigate(`/c/${t.id}`); }}
                             style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.12)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 8, cursor: "pointer" }}>
                             📱 TESTAR
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); finalizarTurma(t.id); }}
+                            style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(52,152,219,0.12)", color: "#3498db", border: "1px solid rgba(52,152,219,0.25)", borderRadius: 8, cursor: "pointer" }}>
+                            📁 FINALIZAR
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); excluirTurma(t.id); }}
+                            style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.2)", borderRadius: 8, cursor: "pointer" }}>
+                            🗑
                           </button>
                         </div>
                       </div>
@@ -298,7 +473,10 @@ export default function Admin({ onLogout }) {
                               <button onClick={() => setEditando(null)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "transparent", color: "#888", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, cursor: "pointer" }}>✕</button>
                             </div>
                           ) : (
-                            <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                              <button onClick={() => excluirAluno(a.id)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, cursor: "pointer" }}>🗑</button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -362,12 +540,13 @@ export default function Admin({ onLogout }) {
                                 const ok = temCheckin(al.id, a.id);
                                 return (
                                   <td key={a.id} style={{ textAlign: "center", padding: "6px 4px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                                    <div style={{
+                                    <div onClick={() => toggleCheckin(al.id, a.id, turma.id)} style={{
                                       width: 26, height: 26, borderRadius: 6, margin: "0 auto",
                                       display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12,
                                       background: ok ? "rgba(39,174,96,0.15)" : "rgba(255,255,255,0.03)",
                                       border: ok ? "1px solid rgba(39,174,96,0.3)" : "1px solid rgba(255,255,255,0.05)",
                                       color: ok ? "#2ecc71" : "#333",
+                                      cursor: "pointer", transition: "all 0.15s",
                                     }}>{ok ? "✓" : "·"}</div>
                                   </td>
                                 );
