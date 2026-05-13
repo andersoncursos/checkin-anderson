@@ -14,7 +14,7 @@ export default function Admin({ onLogout }) {
   const [checkins, setCheckins] = useState([]);
   const [certificados, setCertificados] = useState([]);
 
-  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "" });
+  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
   const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
@@ -55,7 +55,7 @@ export default function Admin({ onLogout }) {
       for (const da of datasValidas) {
         await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: da.descricao } });
       }
-      setNovaTurma({ nome: "", curso: "" });
+      setNovaTurma({ nome: "", curso: "", carga_horaria: "30" });
       setDatasAulas([{ data: "", descricao: "" }]);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
@@ -342,9 +342,10 @@ export default function Admin({ onLogout }) {
         {tab === "turmas" && (
           <div>
             <h2 style={{ color: "#F1EFE8", fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Nova Turma</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
               <div><label style={lbl}>Nome da Turma</label><input placeholder="Ex: Turma 15 — Manhã" style={inp} value={novaTurma.nome} onChange={(e) => setNovaTurma({ ...novaTurma, nome: e.target.value })} /></div>
               <div><label style={lbl}>Curso</label><input placeholder="Ex: Meta Ads Completo" style={inp} value={novaTurma.curso} onChange={(e) => setNovaTurma({ ...novaTurma, curso: e.target.value })} /></div>
+              <div><label style={lbl}>Carga Horária</label><select style={{ ...inp, appearance: "auto" }} value={novaTurma.carga_horaria} onChange={(e) => setNovaTurma({ ...novaTurma, carga_horaria: e.target.value })}><option value="18">18h (Fim de semana)</option><option value="30">30h (Semana)</option></select></div>
             </div>
 
             <label style={{ ...lbl, marginTop: 8, marginBottom: 10 }}>📅 Datas das Aulas</label>
@@ -386,7 +387,7 @@ export default function Admin({ onLogout }) {
                           <span style={{ color: expanded ? "#C8A96E" : "#666", transition: "transform 0.2s", display: "inline-block", transform: expanded ? "rotate(90deg)" : "", fontSize: 10 }}>▶</span>
                           <span style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 14 }}>{t.nome}</span>
                           <span style={{ color: "#C8A96E", fontSize: 12 }}>{t.curso}</span>
-                          <span style={{ color: "#555", fontSize: 11 }}>{aulasT.length} aulas</span>
+                          <span style={{ color: "#555", fontSize: 11 }}>{aulasT.length} aulas · {t.carga_horaria || "30"}h</span>
                         </div>
                         <div style={{ display: "flex", gap: 8 }}>
                           <button onClick={(e) => { e.stopPropagation(); copiarLink(t.id); }}
@@ -602,9 +603,8 @@ export default function Admin({ onLogout }) {
               </div>
             )}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
-              <div><label style={lbl}>Turma</label><select style={{ ...inp, appearance: "auto" }} value={certTurma} onChange={(e) => setCertTurma(e.target.value)}><option value="">Selecione a turma...</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso}</option>)}</select></div>
-              <div><label style={lbl}>Carga Horária (horas)</label><input style={inp} value={certCarga} onChange={(e) => setCertCarga(e.target.value)} placeholder="Ex: 30" /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+              <div><label style={lbl}>Turma</label><select style={{ ...inp, appearance: "auto" }} value={certTurma} onChange={(e) => { setCertTurma(e.target.value); const t = turmas.find((x) => x.id === e.target.value); if (t) setCertCarga(t.carga_horaria || "30"); }}><option value="">Selecione a turma...</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso} ({t.carga_horaria || "30"}h)</option>)}</select></div>
               <div><label style={lbl}>Frequência Mínima (%)</label><input style={inp} value={certFreqMin} onChange={(e) => setCertFreqMin(e.target.value)} placeholder="Ex: 75" /></div>
             </div>
 
@@ -632,7 +632,7 @@ export default function Admin({ onLogout }) {
               return (
                 <div>
                   <div style={{ marginBottom: 14, padding: "12px 16px", background: "rgba(200,169,110,0.06)", borderRadius: 10, border: "1px solid rgba(200,169,110,0.1)" }}>
-                    <p style={{ color: "#C8A96E", fontSize: 12, fontWeight: 600, margin: 0 }}>{turma.nome} — {turma.curso} · {aulasT.length} aulas · {alunosT.length} alunos{dataIni && ` · ${fmtDateBR(dataIni)} a ${fmtDateBR(dataFin)}`} · Freq. mínima: {freqMin}%</p>
+                    <p style={{ color: "#C8A96E", fontSize: 12, fontWeight: 600, margin: 0 }}>{turma.nome} — {turma.curso} · {turma.carga_horaria || "30"}h · {aulasT.length} aulas · {alunosT.length} alunos{dataIni && ` · ${fmtDateBR(dataIni)} a ${fmtDateBR(dataFin)}`} · Freq. mínima: {freqMin}%</p>
                   </div>
                   {aptos.length > 0 && (<div style={{ marginBottom: 16 }}><h3 style={{ color: "#2ecc71", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>✅ Aptos para certificado ({aptos.length})</h3>{aptos.map((al) => (<div key={al.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.03)", flexWrap: "wrap" }}><span style={{ color: "#F1EFE8", fontSize: 12, fontWeight: 600, minWidth: 200 }}>{al.nome}</span><span style={{ color: "#2ecc71", fontSize: 11, fontWeight: 700 }}>{al.freq}%</span><input placeholder="Observação (ex: Com destaque)" value={certObs[al.id]||""} onChange={(e)=>setCertObs({...certObs,[al.id]:e.target.value})} style={{ ...inp, padding: "6px 10px", fontSize: 11, flex: 1, minWidth: 150 }} /></div>))}</div>)}
                   {reprov.length > 0 && (<div style={{ marginBottom: 16 }}><h3 style={{ color: "#e74c3c", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>❌ Abaixo da frequência mínima ({reprov.length})</h3>{reprov.map((al) => (<div key={al.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}><span style={{ color: "#888", fontSize: 12 }}>{al.nome}</span><span style={{ color: "#e74c3c", fontSize: 11, fontWeight: 700 }}>{al.freq}% ({al.pres}/{al.tot})</span></div>))}</div>)}
