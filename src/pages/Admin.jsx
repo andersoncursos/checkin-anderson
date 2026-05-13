@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { query, isConnected } from "../supabase";
 import { SQL_SETUP } from "../sql";
 import { formatPhone, cleanPhone, fmtDate, fmtDateFull, weekday } from "../utils";
+import { gerarCertificadoPDF, gerarCodigo, fmtDateBR } from "../certificado";
 
 export default function Admin() {
   const navigate = useNavigate();
@@ -11,25 +12,30 @@ export default function Admin() {
   const [aulas, setAulas] = useState([]);
   const [alunos, setAlunos] = useState([]);
   const [checkins, setCheckins] = useState([]);
+  const [certificados, setCertificados] = useState([]);
 
   const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
-  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", turma_id: "" });
+  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
   const [turmaExpandida, setTurmaExpandida] = useState(null);
+  const [certTurma, setCertTurma] = useState("");
+  const [certCarga, setCertCarga] = useState("30");
+  const [gerando, setGerando] = useState(false);
 
   const connected = isConnected();
 
   const carregarDados = useCallback(async () => {
     if (!connected) return;
     try {
-      const [t, au, a, c] = await Promise.all([
+      const [t, au, a, c, cert] = await Promise.all([
         query("turmas", { qs: "?select=*&order=criado_em.desc" }),
         query("aulas", { qs: "?select=*&order=data_aula.asc" }),
         query("alunos", { qs: "?select=*,turmas(nome,curso)&order=nome.asc" }),
         query("checkins", { qs: "?select=*,alunos(nome,celular),aulas(data_aula,descricao)&order=hora_checkin.desc" }),
+        query("certificados", { qs: "?select=*&order=criado_em.desc" }),
       ]);
-      setTurmas(t); setAulas(au); setAlunos(a); setCheckins(c);
+      setTurmas(t); setAulas(au); setAlunos(a); setCheckins(c); setCertificados(cert);
     } catch (err) { console.error(err); }
   }, [connected]);
 
@@ -57,7 +63,7 @@ export default function Admin() {
     if (!novoAluno.nome || cel.length < 10 || !novoAluno.turma_id) return;
     try {
       await query("alunos", { method: "POST", body: { ...novoAluno, celular: cel } });
-      setNovoAluno({ nome: "", celular: "", turma_id: "" });
+      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "" });
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
   };
@@ -86,6 +92,7 @@ export default function Admin() {
     { id: "turmas", label: "Turmas", icon: "📚" },
     { id: "alunos", label: "Alunos", icon: "👥" },
     { id: "relatorio", label: "Presença", icon: "📊" },
+    { id: "certificados", label: "Certificados", icon: "📜" },
     { id: "setup", label: "Setup", icon: "⚙️" },
   ];
 
@@ -225,6 +232,7 @@ export default function Admin() {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 16 }}>
               <div><label style={lbl}>Nome Completo</label><input placeholder="Maria Silva" style={inp} value={novoAluno.nome} onChange={(e) => setNovoAluno({ ...novoAluno, nome: e.target.value })} /></div>
               <div><label style={lbl}>Celular (WhatsApp)</label><input placeholder="(83) 99999-9999" type="tel" style={inp} value={novoAluno.celular} onChange={(e) => setNovoAluno({ ...novoAluno, celular: formatPhone(e.target.value) })} /></div>
+              <div><label style={lbl}>E-mail</label><input placeholder="aluno@email.com" type="email" style={inp} value={novoAluno.email} onChange={(e) => setNovoAluno({ ...novoAluno, email: e.target.value })} /></div>
               <div><label style={lbl}>Turma</label>
                 <select style={{ ...inp, appearance: "auto" }} value={novoAluno.turma_id} onChange={(e) => setNovoAluno({ ...novoAluno, turma_id: e.target.value })}>
                   <option value="">Selecione...</option>
@@ -241,7 +249,7 @@ export default function Admin() {
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse" }}>
                   <thead>
-                    <tr>{["Nome", "Celular", "Turma"].map((h) => (
+                    <tr>{["Nome", "Celular", "E-mail", "Turma"].map((h) => (
                       <th key={h} style={{ textAlign: "left", padding: "10px 16px", color: "#C8A96E", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(200,169,110,0.12)" }}>{h}</th>
                     ))}</tr>
                   </thead>
@@ -250,6 +258,7 @@ export default function Admin() {
                       <tr key={a.id}>
                         <td style={{ padding: "11px 16px", color: "#F1EFE8", fontSize: 13, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.nome}</td>
                         <td style={{ padding: "11px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)", fontVariantNumeric: "tabular-nums" }}>{formatPhone(a.celular)}</td>
+                        <td style={{ padding: "11px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.email || "—"}</td>
                         <td style={{ padding: "11px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.turmas?.nome || "—"}</td>
                       </tr>
                     ))}
@@ -343,6 +352,240 @@ export default function Admin() {
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* ========== CERTIFICADOS ========== */}
+        {tab === "certificados" && (
+          <div>
+            <h2 style={{ color: "#F1EFE8", fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Gerar Certificados</h2>
+
+            {/* Form */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
+              <div>
+                <label style={lbl}>Turma</label>
+                <select style={{ ...inp, appearance: "auto" }} value={certTurma} onChange={(e) => setCertTurma(e.target.value)}>
+                  <option value="">Selecione a turma...</option>
+                  {turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Carga Horária (horas)</label>
+                <input style={inp} value={certCarga} onChange={(e) => setCertCarga(e.target.value)} placeholder="Ex: 30" />
+              </div>
+            </div>
+
+            {certTurma && (() => {
+              const turma = turmas.find((t) => t.id === certTurma);
+              const aulasT = aulasDaTurma(certTurma);
+              const alunosT = alunosDaTurma(certTurma);
+              if (!turma || !alunosT.length) return <p style={{ color: "#555", fontSize: 13 }}>Nenhum aluno nessa turma.</p>;
+
+              const dataIni = aulasT.length ? aulasT[0].data_aula : "";
+              const dataFin = aulasT.length ? aulasT[aulasT.length - 1].data_aula : "";
+              const jaCertificados = certificados.filter((c) => c.turma_id === certTurma);
+
+              const gerarTodos = async () => {
+                if (!certCarga) { alert("Preencha a carga horária."); return; }
+                setGerando(true);
+                try {
+                  for (const al of alunosT) {
+                    // Check if already has certificate
+                    const jaExiste = jaCertificados.find((c) => c.aluno_id === al.id);
+                    if (jaExiste) continue;
+
+                    const totalAulas = aulasT.length;
+                    const presencas = aulasT.filter((a) => temCheckin(al.id, a.id)).length;
+                    const freq = totalAulas ? Math.round((presencas / totalAulas) * 100) : 0;
+                    const cod = gerarCodigo();
+
+                    await query("certificados", {
+                      method: "POST",
+                      body: {
+                        codigo: cod,
+                        aluno_id: al.id,
+                        turma_id: certTurma,
+                        nome_aluno: al.nome,
+                        nome_curso: turma.curso,
+                        carga_horaria: certCarga,
+                        data_inicio: dataIni,
+                        data_fim: dataFin,
+                        frequencia: freq,
+                      },
+                    });
+                  }
+                  await carregarDados();
+                  alert("Certificados gerados com sucesso!");
+                } catch (err) {
+                  alert("Erro: " + err.message);
+                }
+                setGerando(false);
+              };
+
+              const baixarPDF = async (cert) => {
+                try {
+                  const doc = await gerarCertificadoPDF({
+                    nomeAluno: cert.nome_aluno,
+                    nomeCurso: cert.nome_curso,
+                    cargaHoraria: cert.carga_horaria,
+                    dataInicio: cert.data_inicio,
+                    dataFim: cert.data_fim,
+                    frequencia: cert.frequencia,
+                    codigo: cert.codigo,
+                  });
+                  doc.save(`Certificado_${cert.nome_aluno.replace(/\s+/g, "_")}.pdf`);
+                } catch (err) {
+                  alert("Erro ao gerar PDF: " + err.message);
+                }
+              };
+
+              const enviarEmail = async (cert) => {
+                const al = alunosT.find((a) => a.id === cert.aluno_id);
+                const email = al?.email;
+                if (!email) { alert("Este aluno não tem e-mail cadastrado."); return; }
+                try {
+                  const doc = await gerarCertificadoPDF({
+                    nomeAluno: cert.nome_aluno,
+                    nomeCurso: cert.nome_curso,
+                    cargaHoraria: cert.carga_horaria,
+                    dataInicio: cert.data_inicio,
+                    dataFim: cert.data_fim,
+                    frequencia: cert.frequencia,
+                    codigo: cert.codigo,
+                  });
+                  const pdfBase64 = doc.output("datauristring").split(",")[1];
+                  const res = await fetch("/api/enviar-certificado", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      to: email,
+                      nomeAluno: cert.nome_aluno,
+                      nomeCurso: cert.nome_curso,
+                      codigo: cert.codigo,
+                      pdfBase64,
+                    }),
+                  });
+                  const result = await res.json();
+                  if (result.ok) alert(`Certificado enviado para ${email}!`);
+                  else alert("Erro ao enviar: " + (result.error || "tente novamente"));
+                } catch (err) {
+                  alert("Erro: " + err.message);
+                }
+              };
+
+              const enviarTodosEmail = async () => {
+                const comEmail = jaCertificados.filter((cert) => {
+                  const al = alunosT.find((a) => a.id === cert.aluno_id);
+                  return al?.email;
+                });
+                if (!comEmail.length) { alert("Nenhum aluno tem e-mail cadastrado."); return; }
+                if (!confirm(`Enviar certificado por e-mail para ${comEmail.length} aluno(s)?`)) return;
+                setGerando(true);
+                let enviados = 0;
+                for (const cert of comEmail) {
+                  try {
+                    await enviarEmail(cert);
+                    enviados++;
+                  } catch { /* continue */ }
+                }
+                setGerando(false);
+                alert(`${enviados}/${comEmail.length} certificados enviados!`);
+              };
+
+              return (
+                <div>
+                  <div style={{ marginBottom: 14, padding: "12px 16px", background: "rgba(200,169,110,0.06)", borderRadius: 10, border: "1px solid rgba(200,169,110,0.1)" }}>
+                    <p style={{ color: "#C8A96E", fontSize: 12, fontWeight: 600, margin: 0 }}>
+                      {turma.nome} — {turma.curso} · {aulasT.length} aulas · {alunosT.length} alunos
+                      {dataIni && ` · ${fmtDateBR(dataIni)} a ${fmtDateBR(dataFin)}`}
+                    </p>
+                  </div>
+
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 20 }}>
+                    {jaCertificados.length < alunosT.length && (
+                      <button
+                        style={{ ...btnP, opacity: gerando ? 0.6 : 1 }}
+                        onClick={gerarTodos}
+                        disabled={gerando}
+                      >
+                        {gerando ? "⏳ Gerando..." : `📜 GERAR CERTIFICADOS (${alunosT.length - jaCertificados.length} restantes)`}
+                      </button>
+                    )}
+                    {jaCertificados.length > 0 && (
+                      <button
+                        style={{ ...btnP, background: "linear-gradient(135deg, #27ae60, #1e8449)", opacity: gerando ? 0.6 : 1 }}
+                        onClick={enviarTodosEmail}
+                        disabled={gerando}
+                      >
+                        {gerando ? "⏳ Enviando..." : `📧 ENVIAR TODOS POR E-MAIL`}
+                      </button>
+                    )}
+                  </div>
+
+                  {jaCertificados.length > 0 && (
+                    <div>
+                      <h3 style={{ color: "#F1EFE8", fontSize: 13, fontWeight: 700, marginBottom: 14 }}>
+                        Certificados Gerados ({jaCertificados.length}/{alunosT.length})
+                      </h3>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                        {jaCertificados.map((cert) => {
+                          const al = alunosT.find((a) => a.id === cert.aluno_id);
+                          const temEmail = !!al?.email;
+                          return (
+                          <div key={cert.id} style={{
+                            display: "flex", justifyContent: "space-between", alignItems: "center",
+                            padding: "12px 16px", background: "rgba(255,255,255,0.025)", borderRadius: 10,
+                            border: "1px solid rgba(200,169,110,0.08)", flexWrap: "wrap", gap: 10,
+                          }}>
+                            <div>
+                              <span style={{ color: "#F1EFE8", fontSize: 13, fontWeight: 600 }}>{cert.nome_aluno}</span>
+                              <span style={{ color: "#555", fontSize: 11, marginLeft: 10 }}>Código: </span>
+                              <span style={{ color: "#C8A96E", fontSize: 11, fontWeight: 700 }}>{cert.codigo}</span>
+                              <span style={{ color: "#555", fontSize: 11, marginLeft: 10 }}>Frequência: </span>
+                              <span style={{
+                                color: cert.frequencia >= 75 ? "#2ecc71" : cert.frequencia >= 50 ? "#f39c12" : "#e74c3c",
+                                fontSize: 11, fontWeight: 700,
+                              }}>{cert.frequencia}%</span>
+                              {al?.email && <span style={{ color: "#555", fontSize: 10, marginLeft: 10 }}>📧 {al.email}</span>}
+                            </div>
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button
+                                onClick={() => baixarPDF(cert)}
+                                style={{
+                                  padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif",
+                                  fontWeight: 700, background: "rgba(200,169,110,0.12)", color: "#C8A96E",
+                                  border: "1px solid rgba(200,169,110,0.25)", borderRadius: 8, cursor: "pointer",
+                                }}
+                              >
+                                📄 PDF
+                              </button>
+                              <button
+                                onClick={() => enviarEmail(cert)}
+                                disabled={!temEmail}
+                                style={{
+                                  padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif",
+                                  fontWeight: 700, background: temEmail ? "rgba(39,174,96,0.12)" : "rgba(255,255,255,0.03)",
+                                  color: temEmail ? "#2ecc71" : "#555",
+                                  border: temEmail ? "1px solid rgba(39,174,96,0.25)" : "1px solid rgba(255,255,255,0.05)",
+                                  borderRadius: 8, cursor: temEmail ? "pointer" : "default",
+                                  opacity: temEmail ? 1 : 0.5,
+                                }}
+                              >
+                                📧 E-MAIL
+                              </button>
+                            </div>
+                          </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 

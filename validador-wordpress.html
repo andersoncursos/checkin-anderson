@@ -1,0 +1,244 @@
+<!-- 
+  VALIDADOR DE CERTIFICADO — Anderson Cursos
+  Cole este código em uma página do WordPress (bloco HTML personalizado)
+  
+  IMPORTANTE: Substitua as duas variáveis abaixo com seus dados do Supabase
+-->
+
+<div id="validador-certificado"></div>
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&display=swap');
+
+  #validador-certificado {
+    font-family: 'Montserrat', sans-serif;
+    max-width: 520px;
+    margin: 40px auto;
+    padding: 0 20px;
+  }
+
+  #validador-certificado * {
+    box-sizing: border-box;
+  }
+
+  .vc-card {
+    background: #1A1A18;
+    border-radius: 16px;
+    padding: 32px 24px;
+    border: 1px solid rgba(200,169,110,0.15);
+    text-align: center;
+  }
+
+  .vc-icon {
+    width: 56px; height: 56px; margin: 0 auto 14px;
+    background: linear-gradient(135deg, #C8A96E, #e0c68a);
+    border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; box-shadow: 0 4px 20px rgba(200,169,110,0.25);
+  }
+
+  .vc-title {
+    color: #F1EFE8; font-weight: 700; font-size: 20px; margin: 0 0 4px;
+  }
+
+  .vc-subtitle {
+    color: #C8A96E; font-size: 13px; font-weight: 600; margin: 0 0 24px;
+  }
+
+  .vc-input {
+    width: 100%; padding: 16px 20px; font-size: 20px;
+    font-family: 'Montserrat', sans-serif;
+    background: rgba(255,255,255,0.05);
+    border: 2px solid rgba(200,169,110,0.25); border-radius: 12px;
+    color: #F1EFE8; text-align: center; letter-spacing: 2px;
+    outline: none; font-weight: 700;
+    transition: border-color 0.2s;
+  }
+
+  .vc-input:focus { border-color: #C8A96E; }
+  .vc-input::placeholder { color: #555; font-weight: 400; letter-spacing: 0; font-size: 14px; }
+
+  .vc-btn {
+    width: 100%; margin-top: 18px; padding: 16px; font-size: 15px;
+    font-family: 'Montserrat', sans-serif; font-weight: 700;
+    background: linear-gradient(135deg, #C8A96E, #b8954e);
+    color: #1A1A18; border: none; border-radius: 12px; cursor: pointer;
+    box-shadow: 0 4px 16px rgba(200,169,110,0.25);
+    transition: transform 0.15s;
+  }
+
+  .vc-btn:hover { transform: translateY(-1px); }
+  .vc-btn:disabled { opacity: 0.6; cursor: default; transform: none; }
+
+  .vc-error { color: #e74c3c; font-size: 13px; margin-top: 12px; }
+
+  .vc-ok-icon {
+    width: 64px; height: 64px; margin: 0 auto 12px;
+    background: linear-gradient(135deg, #27ae60, #2ecc71);
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    font-size: 30px; box-shadow: 0 4px 20px rgba(39,174,96,0.3);
+  }
+
+  .vc-ok-title { color: #2ecc71; font-weight: 700; font-size: 18px; margin: 0 0 20px; }
+
+  .vc-row {
+    padding: 10px 0; text-align: left;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .vc-row:last-child { border-bottom: none; }
+
+  .vc-label {
+    color: #888; font-size: 10px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px; margin: 0 0 3px;
+  }
+
+  .vc-value { color: #F1EFE8; font-size: 14px; font-weight: 600; margin: 0; }
+
+  .vc-footer {
+    margin-top: 16px; padding: 10px 14px;
+    background: rgba(39,174,96,0.08); border-radius: 8px;
+    border: 1px solid rgba(39,174,96,0.15);
+  }
+
+  .vc-footer p { color: #2ecc71; font-size: 11px; margin: 0; line-height: 1.6; }
+
+  .vc-back {
+    width: 100%; margin-top: 16px; padding: 12px; font-size: 13px;
+    font-family: 'Montserrat', sans-serif; font-weight: 600;
+    background: transparent; color: #C8A96E;
+    border: 2px solid rgba(200,169,110,0.35); border-radius: 12px; cursor: pointer;
+  }
+</style>
+
+<script>
+(function() {
+  // =====================================================
+  // SUBSTITUA ESTAS DUAS LINHAS COM SEUS DADOS DO SUPABASE
+  // =====================================================
+  const SUPABASE_URL = "https://gnlnmaxmfowaezqthzsq.supabase.co";
+  const SUPABASE_ANON_KEY = "COLE_SUA_ANON_KEY_AQUI";
+  // =====================================================
+
+  const container = document.getElementById('validador-certificado');
+
+  function fmtDate(d) {
+    if (!d) return '';
+    const [y, m, dd] = d.split('-');
+    return dd + '/' + m + '/' + y;
+  }
+
+  function renderForm() {
+    // Check if URL has a code parameter
+    const path = window.location.pathname;
+    const match = path.match(/validar-certificado\/([A-Za-z0-9\-]+)/);
+    const preCode = match ? match[1] : '';
+
+    container.innerHTML = `
+      <div class="vc-card">
+        <div class="vc-icon">📜</div>
+        <h2 class="vc-title">Validar Certificado</h2>
+        <p class="vc-subtitle">Anderson Cursos e Treinamentos</p>
+        <p style="color: #ddd; font-size: 14px; margin-bottom: 22px; line-height: 1.7;">
+          Digite o código de verificação do certificado:
+        </p>
+        <input class="vc-input" id="vc-code" type="text" placeholder="Ex: AC-2026-ABC123" value="${preCode}" />
+        <div id="vc-error" class="vc-error" style="display:none;"></div>
+        <button class="vc-btn" id="vc-btn">VALIDAR</button>
+      </div>
+    `;
+
+    document.getElementById('vc-btn').addEventListener('click', buscar);
+    document.getElementById('vc-code').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') buscar();
+    });
+    document.getElementById('vc-code').addEventListener('input', function(e) {
+      e.target.value = e.target.value.toUpperCase();
+    });
+
+    // Auto-search if URL has code
+    if (preCode) setTimeout(buscar, 300);
+  }
+
+  async function buscar() {
+    const code = document.getElementById('vc-code').value.trim();
+    if (!code) return;
+
+    const btn = document.getElementById('vc-btn');
+    const errDiv = document.getElementById('vc-error');
+    btn.disabled = true;
+    btn.textContent = 'Buscando...';
+    errDiv.style.display = 'none';
+
+    try {
+      const res = await fetch(
+        SUPABASE_URL + '/rest/v1/certificados?codigo=eq.' + encodeURIComponent(code) + '&select=*',
+        {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: 'Bearer ' + SUPABASE_ANON_KEY,
+          },
+        }
+      );
+      const data = await res.json();
+
+      if (data.length > 0) {
+        renderResult(data[0]);
+      } else {
+        errDiv.textContent = 'Certificado não encontrado. Verifique o código e tente novamente.';
+        errDiv.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'VALIDAR';
+      }
+    } catch (err) {
+      errDiv.textContent = 'Erro ao consultar. Tente novamente.';
+      errDiv.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'VALIDAR';
+    }
+  }
+
+  function renderResult(cert) {
+    const freqColor = cert.frequencia >= 75 ? '#2ecc71' : (cert.frequencia >= 50 ? '#f39c12' : '#e74c3c');
+
+    container.innerHTML = `
+      <div class="vc-card" style="text-align: left;">
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div class="vc-ok-icon">✅</div>
+          <h2 class="vc-ok-title">Certificado Válido</h2>
+        </div>
+        <div class="vc-row">
+          <p class="vc-label">Aluno</p>
+          <p class="vc-value">${cert.nome_aluno}</p>
+        </div>
+        <div class="vc-row">
+          <p class="vc-label">Curso</p>
+          <p class="vc-value">${cert.nome_curso}</p>
+        </div>
+        <div class="vc-row">
+          <p class="vc-label">Carga Horária</p>
+          <p class="vc-value">${cert.carga_horaria} horas/aula</p>
+        </div>
+        <div class="vc-row">
+          <p class="vc-label">Período</p>
+          <p class="vc-value">${fmtDate(cert.data_inicio)} a ${fmtDate(cert.data_fim)}</p>
+        </div>
+        <div class="vc-row">
+          <p class="vc-label">Frequência</p>
+          <p class="vc-value" style="color: ${freqColor}">${cert.frequencia}%</p>
+        </div>
+        <div class="vc-row">
+          <p class="vc-label">Código</p>
+          <p class="vc-value" style="color: #C8A96E">${cert.codigo}</p>
+        </div>
+        <div class="vc-footer">
+          <p>Este certificado foi emitido pela Anderson Cursos e Treinamentos LTDA — CNPJ 24.335.154/0001-00</p>
+        </div>
+        <button class="vc-back" id="vc-back">← Validar outro certificado</button>
+      </div>
+    `;
+
+    document.getElementById('vc-back').addEventListener('click', renderForm);
+  }
+
+  renderForm();
+})();
+</script>
