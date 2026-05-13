@@ -111,7 +111,7 @@ export default function Admin({ onLogout }) {
                 <p style="color:#C8A96E;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Informações do curso</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">📚 <strong>${turma.curso}</strong> — ${turma.nome}</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">⏱ Carga horária: ${turma.carga_horaria || "30"}h</p>
-                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">🕐 Horário: ${turma.horario_inicio || "19:00"} às ${turma.horario_fim || "21:00"}</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">🕐 Horário: ${turma.carga_horaria === "18" ? "Sábado e Domingo, 09:00 às 12:00 e 14:30 às 18:00" : (turma.horario_inicio || "18:00") + " às " + (turma.horario_fim || "21:00")}</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0;">📍 Local: João Pessoa — PB</p>
               </div>
               <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">No dia da aula, você receberá um link no WhatsApp para registrar sua presença. É rápido: abra o link, digite seu celular e confirme.</p>
