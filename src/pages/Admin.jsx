@@ -14,7 +14,7 @@ export default function Admin({ onLogout }) {
   const [checkins, setCheckins] = useState([]);
   const [certificados, setCertificados] = useState([]);
 
-  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "18:00", horario_fim: "21:00" });
+  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30-noite", horario_inicio: "18:00", horario_fim: "21:00" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
   const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
@@ -47,6 +47,8 @@ export default function Admin({ onLogout }) {
 
   // --- Turma ---
   const isWeekend = novaTurma.carga_horaria === "18";
+  const getCH = (ch) => ch === "18" ? "18" : ch === "30-tarde" ? "30" : ch === "30-noite" ? "30" : ch || "30";
+  const getFmtTurma = (ch) => ch === "18" ? "18h (Fim de semana)" : ch === "30-tarde" ? "30h (Tarde)" : ch === "30-noite" ? "30h (Noite)" : (ch || "30") + "h";
 
   const criarTurma = async () => {
     if (!novaTurma.nome || !novaTurma.curso) return;
@@ -84,7 +86,7 @@ export default function Admin({ onLogout }) {
         if (calData.ok) alert(`Turma criada! ${calData.created} aula(s) adicionadas ao Google Calendar 📅`);
         else alert("Turma criada! (Google Calendar: " + (calData.error || "não conectado") + ")");
       } catch { alert("Turma criada! (Google Calendar não disponível)"); }
-      setNovaTurma({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "18:00", horario_fim: "21:00" });
+      setNovaTurma({ nome: "", curso: "", carga_horaria: "30-noite", horario_inicio: "18:00", horario_fim: "21:00" });
       setDatasAulas([{ data: "", descricao: "" }]);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
@@ -110,7 +112,7 @@ export default function Admin({ onLogout }) {
               <div style="background:rgba(200,169,110,0.08);border:1px solid rgba(200,169,110,0.2);border-radius:8px;padding:16px;margin-bottom:16px;">
                 <p style="color:#C8A96E;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Informações do curso</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">📚 <strong>${turma.curso}</strong> — ${turma.nome}</p>
-                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">⏱ Carga horária: ${turma.carga_horaria || "30"}h</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">⏱ Carga horária: ${getCH(turma.carga_horaria)}h</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">🕐 Horário: ${turma.carga_horaria === "18" ? "Sábado e Domingo, 09:00 às 12:00 e 14:30 às 18:00" : (turma.horario_inicio || "18:00") + " às " + (turma.horario_fim || "21:00")}</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0;">📍 Local: João Pessoa — PB</p>
               </div>
@@ -642,7 +644,12 @@ export default function Admin({ onLogout }) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
               <div><label style={lbl}>Nome da Turma</label><input placeholder="Ex: Turma 15 — Manhã" style={inp} value={novaTurma.nome} onChange={(e) => setNovaTurma({ ...novaTurma, nome: e.target.value })} /></div>
               <div><label style={lbl}>Curso</label><input placeholder="Ex: Meta Ads Completo" style={inp} value={novaTurma.curso} onChange={(e) => setNovaTurma({ ...novaTurma, curso: e.target.value })} /></div>
-              <div><label style={lbl}>Carga Horária</label><select style={{ ...inp, appearance: "auto" }} value={novaTurma.carga_horaria} onChange={(e) => setNovaTurma({ ...novaTurma, carga_horaria: e.target.value })}><option value="18">18h (Fim de semana)</option><option value="30">30h (Semana)</option></select></div>
+              <div><label style={lbl}>Formato da Turma</label><select style={{ ...inp, appearance: "auto" }} value={novaTurma.carga_horaria} onChange={(e) => {
+                const v = e.target.value;
+                if (v === "30-noite") setNovaTurma({ ...novaTurma, carga_horaria: v, horario_inicio: "18:00", horario_fim: "21:00" });
+                else if (v === "30-tarde") setNovaTurma({ ...novaTurma, carga_horaria: v, horario_inicio: "14:00", horario_fim: "17:00" });
+                else setNovaTurma({ ...novaTurma, carga_horaria: v, horario_inicio: "09:00", horario_fim: "18:00" });
+              }}><option value="30-noite">30h — Semana (Noite: 18h às 21h)</option><option value="30-tarde">30h — Semana (Tarde: 14h às 17h)</option><option value="18">18h — Fim de semana (Sáb/Dom)</option></select></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
               {isWeekend ? (
@@ -707,7 +714,7 @@ export default function Admin({ onLogout }) {
                           <span style={{ color: expanded ? "#C8A96E" : "#666", transition: "transform 0.2s", display: "inline-block", transform: expanded ? "rotate(90deg)" : "", fontSize: 10 }}>▶</span>
                           <span style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 14 }}>{t.nome}</span>
                           <span style={{ color: "#C8A96E", fontSize: 12 }}>{t.curso}</span>
-                          <span style={{ color: "#555", fontSize: 11 }}>{aulasT.length} aulas · {t.carga_horaria || "30"}h</span>
+                          <span style={{ color: "#555", fontSize: 11 }}>{aulasT.length} aulas · {getCH(t.carga_horaria)}h</span>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button onClick={(e) => { e.stopPropagation(); copiarLink(t.id); }}
@@ -950,7 +957,7 @@ export default function Admin({ onLogout }) {
             )}
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
-              <div><label style={lbl}>Turma</label><select style={{ ...inp, appearance: "auto" }} value={certTurma} onChange={(e) => { setCertTurma(e.target.value); const t = turmas.find((x) => x.id === e.target.value); if (t) setCertCarga(t.carga_horaria || "30"); }}><option value="">Selecione a turma...</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso} ({t.carga_horaria || "30"}h)</option>)}</select></div>
+              <div><label style={lbl}>Turma</label><select style={{ ...inp, appearance: "auto" }} value={certTurma} onChange={(e) => { setCertTurma(e.target.value); const t = turmas.find((x) => x.id === e.target.value); if (t) setCertCarga(getCH(t.carga_horaria)); }}><option value="">Selecione a turma...</option>{turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso} ({getCH(t.carga_horaria)}h)</option>)}</select></div>
               <div><label style={lbl}>Frequência Mínima (%)</label><input style={inp} value={certFreqMin} onChange={(e) => setCertFreqMin(e.target.value)} placeholder="Ex: 75" /></div>
             </div>
 
@@ -978,7 +985,7 @@ export default function Admin({ onLogout }) {
               return (
                 <div>
                   <div style={{ marginBottom: 14, padding: "12px 16px", background: "rgba(200,169,110,0.06)", borderRadius: 10, border: "1px solid rgba(200,169,110,0.1)" }}>
-                    <p style={{ color: "#C8A96E", fontSize: 12, fontWeight: 600, margin: 0 }}>{turma.nome} — {turma.curso} · {turma.carga_horaria || "30"}h · {aulasT.length} aulas · {alunosT.length} alunos{dataIni && ` · ${fmtDateBR(dataIni)} a ${fmtDateBR(dataFin)}`} · Freq. mínima: {freqMin}%</p>
+                    <p style={{ color: "#C8A96E", fontSize: 12, fontWeight: 600, margin: 0 }}>{turma.nome} — {turma.curso} · {getCH(turma.carga_horaria)}h · {aulasT.length} aulas · {alunosT.length} alunos{dataIni && ` · ${fmtDateBR(dataIni)} a ${fmtDateBR(dataFin)}`} · Freq. mínima: {freqMin}%</p>
                   </div>
                   {aptos.length > 0 && (<div style={{ marginBottom: 16 }}><h3 style={{ color: "#2ecc71", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>✅ Aptos para certificado ({aptos.length})</h3>{aptos.map((al) => (<div key={al.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.03)", flexWrap: "wrap" }}><span style={{ color: "#F1EFE8", fontSize: 12, fontWeight: 600, minWidth: 200 }}>{al.nome}</span><span style={{ color: "#2ecc71", fontSize: 11, fontWeight: 700 }}>{al.freq}%</span><input placeholder="Observação (ex: Com destaque)" value={certObs[al.id]||""} onChange={(e)=>setCertObs({...certObs,[al.id]:e.target.value})} style={{ ...inp, padding: "6px 10px", fontSize: 11, flex: 1, minWidth: 150 }} /></div>))}</div>)}
                   {reprov.length > 0 && (<div style={{ marginBottom: 16 }}><h3 style={{ color: "#e74c3c", fontSize: 12, fontWeight: 700, marginBottom: 10 }}>❌ Abaixo da frequência mínima ({reprov.length})</h3>{reprov.map((al) => (<div key={al.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: "1px solid rgba(255,255,255,0.03)" }}><span style={{ color: "#888", fontSize: 12 }}>{al.nome}</span><span style={{ color: "#e74c3c", fontSize: 11, fontWeight: 700 }}>{al.freq}% ({al.pres}/{al.tot})</span></div>))}</div>)}
