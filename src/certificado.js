@@ -32,6 +32,7 @@ export async function gerarCertificadoPDF({
   dataFim,
   frequencia,
   codigo,
+  observacao,
 }) {
   // Import jsPDF from npm
   const { jsPDF } = await import("jspdf");
@@ -111,6 +112,14 @@ export async function gerarCertificadoPDF({
   doc.setFont("helvetica", "normal");
   doc.setTextColor(200, 169, 110);
   doc.text(dataExtenso(dataFim), W / 2, yAfterText, { align: "center" });
+
+  // ===== OBSERVAÇÃO (opcional) =====
+  if (observacao) {
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(241, 239, 232);
+    doc.text(observacao, W / 2, yAfterText + 7, { align: "center" });
+  }
 
   // ===== SIGNATURE =====
   const sigW = 42;
