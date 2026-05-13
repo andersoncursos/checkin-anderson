@@ -79,11 +79,27 @@ export default function Checkin() {
   const [already, setAlready] = useState(false);
   const [noClass, setNoClass] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [foraHorario, setForaHorario] = useState(false);
+  const [verificandoLocal, setVerificandoLocal] = useState(false);
 
   useEffect(() => {
     if (!isConnected() || !turmaId) return;
     query("turmas", { qs: `?id=eq.${turmaId}&select=*` })
-      .then((d) => d[0] && setTurma(d[0]))
+      .then((d) => {
+        if (!d[0]) return;
+        setTurma(d[0]);
+        // Check time window
+        const t = d[0];
+        if (t.horario_inicio && t.horario_fim) {
+          const now = new Date();
+          const [hi, mi] = t.horario_inicio.split(":").map(Number);
+          const [hf, mf] = t.horario_fim.split(":").map(Number);
+          const nowMin = now.getHours() * 60 + now.getMinutes();
+          const iniMin = hi * 60 + mi - 30; // 30 min antes
+          const fimMin = hf * 60 + mf + 30; // 30 min depois
+          if (nowMin < iniMin || nowMin > fimMin) setForaHorario(true);
+        }
+      })
       .catch(() => {});
 
     const hoje = todayStr();
@@ -115,6 +131,43 @@ export default function Checkin() {
 
   const confirmarCheckin = async () => {
     if (!aula) { setError("Nenhuma aula cadastrada para hoje nessa turma."); return; }
+
+    // Time window check
+    if (turma?.horario_inicio && turma?.horario_fim) {
+      const now = new Date();
+      const [hi, mi] = turma.horario_inicio.split(":").map(Number);
+      const [hf, mf] = turma.horario_fim.split(":").map(Number);
+      const nowMin = now.getHours() * 60 + now.getMinutes();
+      const iniMin = hi * 60 + mi - 30;
+      const fimMin = hf * 60 + mf + 30;
+      if (nowMin < iniMin || nowMin > fimMin) {
+        setError(`Check-in disponível apenas entre ${turma.horario_inicio} e ${turma.horario_fim} (com 30min de tolerância).`);
+        return;
+      }
+    }
+
+    // Geolocation check
+    if (turma?.local_lat && turma?.local_lng) {
+      setVerificandoLocal(true);
+      setError("");
+      try {
+        const pos = await new Promise((resolve, reject) => {
+          navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 });
+        });
+        const dist = calcDistance(pos.coords.latitude, pos.coords.longitude, turma.local_lat, turma.local_lng);
+        const raio = turma.local_raio || 200;
+        setVerificandoLocal(false);
+        if (dist > raio) {
+          setError(`Você está a ${Math.round(dist)}m do local da aula. O check-in só é permitido num raio de ${raio}m.`);
+          return;
+        }
+      } catch (geoErr) {
+        setVerificandoLocal(false);
+        setError("Permita o acesso à localização para fazer o check-in.");
+        return;
+      }
+    }
+
     try {
       await query("checkins", { method: "POST", body: { aluno_id: aluno.id, aula_id: aula.id, turma_id: turmaId } });
       setStep("done");
@@ -128,6 +181,15 @@ export default function Checkin() {
       } else { setError("Erro ao registrar. Tente novamente."); }
     }
   };
+
+  // Haversine formula
+  function calcDistance(lat1, lon1, lat2, lon2) {
+    const R = 6371000;
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLon/2) * Math.sin(dLon/2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  }
 
   const s = {
     page: {
@@ -191,6 +253,18 @@ export default function Checkin() {
           <p style={{ color: "#666", fontSize: 12, marginTop: 8 }}>@professorjoseanderson.ads</p>
         </div>
 
+        {/* Fora do horário */}
+        {foraHorario && !noClass && aula && step === "phone" && (
+          <div style={{ ...s.card, padding: "36px 24px" }}>
+            <div style={{ width: 64, height: 64, margin: "0 auto 16px", background: "rgba(241,196,15,0.15)", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>🕐</div>
+            <h2 style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Fora do horário de check-in</h2>
+            <p style={{ color: "#999", fontSize: 13, lineHeight: 1.7 }}>
+              O check-in para <span style={{ color: "#C8A96E", fontWeight: 600 }}>{turma?.curso}</span> está disponível entre <span style={{ color: "#F1EFE8", fontWeight: 700 }}>{turma?.horario_inicio}</span> e <span style={{ color: "#F1EFE8", fontWeight: 700 }}>{turma?.horario_fim}</span> (com 30min de tolerância).
+            </p>
+            <p style={{ color: "#666", fontSize: 12, marginTop: 12 }}>Volte no horário da aula para registrar sua presença.</p>
+          </div>
+        )}
+
         {/* No class today - improved with next class info */}
         {noClass && !aula && (
           <div style={{ ...s.card, padding: "36px 24px" }}>
@@ -228,7 +302,7 @@ export default function Checkin() {
         )}
 
         {/* Phone step - personalized welcome */}
-        {step === "phone" && !noClass && (
+        {step === "phone" && !noClass && !foraHorario && (
           <div style={s.card}>
             <p style={{ color: "#C8A96E", fontSize: 15, fontWeight: 700, marginBottom: 6 }}>
               Bem-vindo(a)! 👋
@@ -288,13 +362,15 @@ export default function Checkin() {
               </button>
               <button
                 onClick={confirmarCheckin}
+                disabled={verificandoLocal}
                 style={{
                   flex: 2, padding: 14, fontSize: 14, fontFamily: "'Montserrat', sans-serif",
                   fontWeight: 700, background: "linear-gradient(135deg, #C8A96E, #b8954e)",
                   color: "#1A1A18", border: "none", borderRadius: 12, cursor: "pointer",
                   boxShadow: "0 4px 16px rgba(200,169,110,0.25)",
+                  opacity: verificandoLocal ? 0.6 : 1,
                 }}>
-                ✓ CONFIRMAR PRESENÇA
+                {verificandoLocal ? "📍 Verificando localização..." : "✓ CONFIRMAR PRESENÇA"}
               </button>
             </div>
           </div>

@@ -14,7 +14,7 @@ export default function Admin({ onLogout }) {
   const [checkins, setCheckins] = useState([]);
   const [certificados, setCertificados] = useState([]);
 
-  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30" });
+  const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "19:00", horario_fim: "21:00" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
   const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
@@ -55,7 +55,7 @@ export default function Admin({ onLogout }) {
       for (const da of datasValidas) {
         await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: da.descricao } });
       }
-      setNovaTurma({ nome: "", curso: "", carga_horaria: "30" });
+      setNovaTurma({ nome: "", curso: "", carga_horaria: "30", horario_inicio: "19:00", horario_fim: "21:00" });
       setDatasAulas([{ data: "", descricao: "" }]);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
@@ -443,6 +443,16 @@ export default function Admin({ onLogout }) {
               <div><label style={lbl}>Curso</label><input placeholder="Ex: Meta Ads Completo" style={inp} value={novaTurma.curso} onChange={(e) => setNovaTurma({ ...novaTurma, curso: e.target.value })} /></div>
               <div><label style={lbl}>Carga Horária</label><select style={{ ...inp, appearance: "auto" }} value={novaTurma.carga_horaria} onChange={(e) => setNovaTurma({ ...novaTurma, carga_horaria: e.target.value })}><option value="18">18h (Fim de semana)</option><option value="30">30h (Semana)</option></select></div>
             </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
+              <div><label style={lbl}>🕐 Horário Início (check-in)</label><input type="time" style={inp} value={novaTurma.horario_inicio} onChange={(e) => setNovaTurma({ ...novaTurma, horario_inicio: e.target.value })} /></div>
+              <div><label style={lbl}>🕐 Horário Fim (check-in)</label><input type="time" style={inp} value={novaTurma.horario_fim} onChange={(e) => setNovaTurma({ ...novaTurma, horario_fim: e.target.value })} /></div>
+              <div><label style={lbl}>📍 Local da Aula</label><button onClick={() => {
+                navigator.geolocation.getCurrentPosition((pos) => {
+                  setNovaTurma({ ...novaTurma, local_lat: pos.coords.latitude, local_lng: pos.coords.longitude });
+                  alert(`Localização capturada!\nLat: ${pos.coords.latitude.toFixed(6)}\nLng: ${pos.coords.longitude.toFixed(6)}\n\nO aluno só poderá fazer check-in num raio de 200m deste ponto.`);
+                }, () => alert("Permita o acesso à localização."));
+              }} style={{ ...inp, cursor: "pointer", textAlign: "center", color: novaTurma.local_lat ? "#2ecc71" : "#C8A96E", background: novaTurma.local_lat ? "rgba(39,174,96,0.1)" : "rgba(200,169,110,0.08)", border: novaTurma.local_lat ? "1px solid rgba(39,174,96,0.25)" : "1px solid rgba(200,169,110,0.2)" }}>{novaTurma.local_lat ? `✅ Capturada (${novaTurma.local_lat.toFixed(4)}, ${novaTurma.local_lng.toFixed(4)})` : "📍 Capturar minha localização"}</button></div>
+            </div>
 
             <label style={{ ...lbl, marginTop: 8, marginBottom: 10 }}>📅 Datas das Aulas</label>
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }}>
@@ -508,15 +518,33 @@ export default function Admin({ onLogout }) {
                           </button>
                         </div>
                       </div>
-                      {expanded && aulasT.length > 0 && (
-                        <div style={{ padding: "0 18px 14px", display: "flex", flexWrap: "wrap", gap: 6 }}>
-                          {aulasT.map((a, i) => (
-                            <div key={a.id} style={{ background: "rgba(200,169,110,0.06)", padding: "6px 12px", borderRadius: 6, border: "1px solid rgba(200,169,110,0.1)", fontSize: 11 }}>
-                              <span style={{ color: "#C8A96E", fontWeight: 700 }}>Aula {i + 1}</span>
-                              <span style={{ color: "#999", marginLeft: 6 }}>{fmtDate(a.data_aula)} ({weekday(a.data_aula)})</span>
-                              {a.descricao && <span style={{ color: "#666", marginLeft: 4 }}>— {a.descricao}</span>}
+                      {expanded && (
+                        <div style={{ padding: "0 18px 14px" }}>
+                          {aulasT.length > 0 && (
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
+                              {aulasT.map((a, i) => (
+                                <div key={a.id} style={{ background: "rgba(200,169,110,0.06)", padding: "6px 12px", borderRadius: 6, border: "1px solid rgba(200,169,110,0.1)", fontSize: 11 }}>
+                                  <span style={{ color: "#C8A96E", fontWeight: 700 }}>Aula {i + 1}</span>
+                                  <span style={{ color: "#999", marginLeft: 6 }}>{fmtDate(a.data_aula)} ({weekday(a.data_aula)})</span>
+                                  {a.descricao && <span style={{ color: "#666", marginLeft: 4 }}>— {a.descricao}</span>}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
+                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                            <span style={{ color: "#555", fontSize: 10 }}>🕐 Check-in: {t.horario_inicio || "—"} às {t.horario_fim || "—"}</span>
+                            <span style={{ color: "#555", fontSize: 10 }}>📍 {t.local_lat ? `Geoloc. ativa (${t.local_raio || 200}m)` : "Sem geolocalização"}</span>
+                            {!t.local_lat && (
+                              <button onClick={(e) => { e.stopPropagation(); navigator.geolocation.getCurrentPosition(async (pos) => {
+                                try {
+                                  await query("turmas", { method: "PATCH", qs: `?id=eq.${t.id}`, body: { local_lat: pos.coords.latitude, local_lng: pos.coords.longitude } });
+                                  carregarDados();
+                                  alert("Localização configurada!");
+                                } catch (err) { alert("Erro: " + err.message); }
+                              }, () => alert("Permita o acesso à localização.")); }}
+                                style={{ padding: "3px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>📍 Definir local</button>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
