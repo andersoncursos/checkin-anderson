@@ -67,6 +67,31 @@ export default function Admin({ onLogout }) {
     if (!novoAluno.nome || cel.length < 10 || !novoAluno.turma_id) return;
     try {
       await query("alunos", { method: "POST", body: { ...novoAluno, celular: cel } });
+      // Send welcome email
+      const turma = turmas.find((t) => t.id === novoAluno.turma_id);
+      if (novoAluno.email && turma) {
+        enviarEmailGenerico(novoAluno.email, novoAluno.nome, turma.curso,
+          `Bem-vindo(a) ao curso ${turma.curso}! 🎉`,
+          `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
+            <div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1><p style="color:#888;font-size:12px;margin-top:4px;">Cursos & Treinamentos</p></div>
+            <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;">
+              <p style="color:#F1EFE8;font-size:16px;margin:0 0 12px;">Olá, <strong>${novoAluno.nome}</strong>! 👋</p>
+              <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Seja bem-vindo(a) ao curso <strong style="color:#C8A96E;">${turma.curso}</strong> — <strong>${turma.nome}</strong>!</p>
+              <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Estamos felizes em ter você conosco. Aqui vão algumas informações importantes:</p>
+              <div style="background:rgba(200,169,110,0.08);border:1px solid rgba(200,169,110,0.2);border-radius:8px;padding:16px;margin-bottom:16px;">
+                <p style="color:#C8A96E;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Informações do curso</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">📚 <strong>${turma.curso}</strong> — ${turma.nome}</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">⏱ Carga horária: ${turma.carga_horaria || "30"}h</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">🕐 Horário: ${turma.horario_inicio || "19:00"} às ${turma.horario_fim || "21:00"}</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0;">📍 Local: João Pessoa — PB</p>
+              </div>
+              <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">No dia da aula, você receberá um link no WhatsApp para registrar sua presença. É rápido: abra o link, digite seu celular e confirme.</p>
+              <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0;">Qualquer dúvida, entre em contato pelo WhatsApp <strong style="color:#F1EFE8;">(83) 99658-4198</strong>.</p>
+            </div>
+            <div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div>
+          </div>`
+        ).catch(() => {});
+      }
       setNovoAluno({ nome: "", celular: "", email: "", turma_id: "" });
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
@@ -250,6 +275,118 @@ export default function Admin({ onLogout }) {
     alert(`${ok}/${com100.length} mensagens de parabéns enviadas!`);
   };
 
+  // --- Email genérico helper ---
+  const enviarEmailGenerico = async (to, nome, curso, assunto, html) => {
+    return fetch("/api/enviar-certificado", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, nomeAluno: nome, nomeCurso: curso, codigo: "__custom__", pdfBase64: null, assunto, htmlCustom: html }),
+    });
+  };
+
+  // --- Notificação de falta ---
+  const notificarFaltas = async (turmaId, dataAula) => {
+    const turma = turmas.find((t) => t.id === turmaId);
+    if (!turma) return;
+    const aula = aulas.find((a) => a.turma_id === turmaId && a.data_aula === dataAula);
+    if (!aula) return;
+    const alunosT = alunosDaTurma(turmaId);
+    const faltaram = alunosT.filter((al) => al.email && !checkins.some((c) => c.aluno_id === al.id && c.aula_id === aula.id));
+    if (!faltaram.length) { alert("Todos os alunos com e-mail estiveram presentes!"); return; }
+    if (!confirm(`Enviar notificação de falta para ${faltaram.length} aluno(s)?`)) return;
+
+    const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+    const [y, m, d] = dataAula.split("-");
+    const dataF = `${parseInt(d)} de ${MESES[parseInt(m)-1]}`;
+    const link = `${window.location.origin}/c/${turmaId}`;
+
+    setGerando(true); let ok = 0;
+    for (const al of faltaram) {
+      try {
+        await enviarEmailGenerico(al.email, al.nome, turma.curso,
+          `Sentimos sua falta na aula de ${turma.curso} 😢`,
+          `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
+            <div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1></div>
+            <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;">
+              <p style="color:#F1EFE8;font-size:16px;margin:0 0 12px;">Olá, <strong>${al.nome}</strong>!</p>
+              <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Notamos que você não esteve presente na aula de <strong style="color:#C8A96E;">${turma.curso}</strong> do dia <strong style="color:#F1EFE8;">${dataF}</strong>.</p>
+              <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Sabemos que imprevistos acontecem! Mas lembre-se que a frequência é importante para o seu certificado de conclusão.</p>
+              <div style="background:rgba(241,196,15,0.08);border:1px solid rgba(241,196,15,0.2);border-radius:8px;padding:14px;margin-bottom:16px;">
+                <p style="color:#f1c40f;font-size:13px;font-weight:600;margin:0;">⚠️ Sua presença conta para a emissão do certificado. Não perca as próximas aulas!</p>
+              </div>
+              <p style="color:#999;font-size:13px;line-height:1.6;margin:0;">Dúvidas? Fale conosco: <strong style="color:#F1EFE8;">(83) 99658-4198</strong></p>
+            </div>
+            <div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div>
+          </div>`
+        );
+        ok++;
+      } catch {}
+    }
+    setGerando(false);
+    alert(`${ok}/${faltaram.length} notificações de falta enviadas!`);
+  };
+
+  // --- Sequência pós-curso ---
+  const enviarSequenciaPosCurso = async (turmaId, etapa) => {
+    const turma = turmas.find((t) => t.id === turmaId);
+    if (!turma) return;
+    const alunosT = alunosDaTurma(turmaId);
+    const comEmail = alunosT.filter((a) => a.email);
+    if (!comEmail.length) { alert("Nenhum aluno com e-mail."); return; }
+
+    const etapas = {
+      depoimento: {
+        assunto: `Conte sua experiência no curso ${turma.curso} ⭐`,
+        html: (nome) => `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
+          <div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1></div>
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;text-align:center;">
+            <div style="font-size:48px;margin-bottom:16px;">⭐</div>
+            <p style="color:#F1EFE8;font-size:16px;margin:0 0 12px;">Olá, <strong>${nome}</strong>!</p>
+            <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Você concluiu o curso <strong style="color:#C8A96E;">${turma.curso}</strong> e gostaríamos muito de saber como foi sua experiência!</p>
+            <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 20px;">Seu depoimento é muito importante para nós e ajuda outros profissionais a conhecerem nossos cursos.</p>
+            <a href="https://wa.me/5583996584198?text=Ol%C3%A1%20Professor%20Anderson!%20Quero%20deixar%20meu%20depoimento%20sobre%20o%20curso%20${encodeURIComponent(turma.curso)}:" style="display:inline-block;background:linear-gradient(135deg,#25d366,#128c7e);color:#fff;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:14px;">💬 Enviar Depoimento pelo WhatsApp</a>
+            <p style="color:#666;font-size:12px;margin-top:16px;">Basta clicar no botão acima e nos contar como foi!</p>
+          </div>
+          <div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div>
+        </div>`,
+      },
+      proximo_curso: {
+        assunto: `Novos cursos disponíveis — Anderson Cursos 🚀`,
+        html: (nome) => `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
+          <div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1></div>
+          <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;">
+            <p style="color:#F1EFE8;font-size:16px;margin:0 0 12px;">Olá, <strong>${nome}</strong>! 👋</p>
+            <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Que bom ter você como aluno(a) da Anderson Cursos! Você concluiu o curso <strong style="color:#C8A96E;">${turma.curso}</strong> e agora pode dar o próximo passo na sua carreira.</p>
+            <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Confira nossos próximos cursos presenciais em João Pessoa:</p>
+            <div style="background:rgba(200,169,110,0.08);border:1px solid rgba(200,169,110,0.2);border-radius:8px;padding:16px;margin-bottom:16px;">
+              <p style="color:#C8A96E;font-size:13px;font-weight:700;margin:0 0 8px;">📚 Cursos disponíveis:</p>
+              <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">• Meta Ads (Tráfego Pago)</p>
+              <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">• Google Ads</p>
+              <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">• Canva para Negócios</p>
+              <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">• CapCut — Edição de Vídeos</p>
+              <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">• Fotografia com Celular</p>
+              <p style="color:#F1EFE8;font-size:13px;margin:0;">• IA para Negócios</p>
+            </div>
+            <div style="text-align:center;margin:20px 0;">
+              <a href="https://wa.me/5583996584198?text=Ol%C3%A1%20Professor!%20Tenho%20interesse%20em%20um%20novo%20curso.%20Vim%20do%20e-mail." style="display:inline-block;background:linear-gradient(135deg,#C8A96E,#b8954e);color:#1A1A18;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:14px;">🚀 Quero me matricular</a>
+            </div>
+            <p style="color:#999;font-size:12px;margin:0;text-align:center;">Ex-alunos têm condições especiais!</p>
+          </div>
+          <div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div>
+        </div>`,
+      },
+    };
+
+    const e = etapas[etapa];
+    if (!e) return;
+    if (!confirm(`Enviar "${e.assunto}" para ${comEmail.length} aluno(s)?`)) return;
+    setGerando(true); let ok = 0;
+    for (const al of comEmail) {
+      try { await enviarEmailGenerico(al.email, al.nome, turma.curso, e.assunto, e.html(al.nome)); ok++; } catch {}
+    }
+    setGerando(false);
+    alert(`${ok}/${comEmail.length} e-mails enviados!`);
+  };
+
   // --- Tabs ---
   const tabs = [
     { id: "dashboard", label: "Dashboard", icon: "🏠" },
@@ -381,6 +518,7 @@ export default function Admin({ onLogout }) {
                   const aulasT = aulasDaTurma(t.id);
                   const alunosT = alunosDaTurma(t.id);
                   const proxAula = aulasT.find((a) => a.data_aula >= hoje);
+                  const aulaOntem = aulasT.filter((a) => a.data_aula < hoje).pop();
                   const com100 = alunosT.filter((al) => { const p = aulasT.filter((a) => temCheckin(al.id, a.id)).length; return p === aulasT.length && aulasT.length > 0; });
                   return (
                     <div key={t.id} style={{
@@ -400,6 +538,11 @@ export default function Admin({ onLogout }) {
                             📧 Lembrete próxima aula
                           </button>
                         )}
+                        {aulaOntem && (
+                          <button onClick={() => notificarFaltas(t.id, aulaOntem.data_aula)} disabled={gerando} style={{ padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(231,76,60,0.12)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.25)", borderRadius: 6, cursor: "pointer" }}>
+                            😢 Notificar faltas ({fmtDate(aulaOntem.data_aula)})
+                          </button>
+                        )}
                         {com100.length > 0 && (
                           <button onClick={() => enviarParabens(t.id)} disabled={gerando} style={{ padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(241,196,15,0.12)", color: "#f1c40f", border: "1px solid rgba(241,196,15,0.25)", borderRadius: 6, cursor: "pointer" }}>
                             🏆 Parabéns 100% ({com100.length})
@@ -417,16 +560,21 @@ export default function Admin({ onLogout }) {
                 <h3 style={{ color: "#888", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📁 Histórico ({turmasFinalizadas.length})</h3>
                 {turmasFinalizadas.map((t) => (
                   <div key={t.id} style={{
-                    background: "rgba(255,255,255,0.015)", borderRadius: 10, padding: "10px 18px",
-                    border: "1px solid rgba(255,255,255,0.04)", marginBottom: 4,
-                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    background: "rgba(255,255,255,0.015)", borderRadius: 10, padding: "12px 18px",
+                    border: "1px solid rgba(255,255,255,0.04)", marginBottom: 6,
                   }}>
-                    <span style={{ color: "#666", fontSize: 12 }}>{t.nome} — {t.curso}</span>
-                    <button onClick={() => reativarTurma(t.id)} style={{
-                      padding: "4px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif",
-                      fontWeight: 600, background: "transparent", color: "#555",
-                      border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, cursor: "pointer",
-                    }}>Reativar</button>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <span style={{ color: "#666", fontSize: 12 }}>{t.nome} — {t.curso}</span>
+                      <button onClick={() => reativarTurma(t.id)} style={{
+                        padding: "4px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif",
+                        fontWeight: 600, background: "transparent", color: "#555",
+                        border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, cursor: "pointer",
+                      }}>Reativar</button>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button onClick={() => enviarSequenciaPosCurso(t.id, "depoimento")} disabled={gerando} style={{ padding: "4px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(241,196,15,0.08)", color: "#f1c40f", border: "1px solid rgba(241,196,15,0.15)", borderRadius: 6, cursor: "pointer" }}>⭐ Pedir Depoimento</button>
+                      <button onClick={() => enviarSequenciaPosCurso(t.id, "proximo_curso")} disabled={gerando} style={{ padding: "4px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>🚀 Oferta Próximo Curso</button>
+                    </div>
                   </div>
                 ))}
               </div>
