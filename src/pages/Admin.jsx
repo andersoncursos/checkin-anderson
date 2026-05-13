@@ -5,7 +5,7 @@ import { SQL_SETUP } from "../sql";
 import { formatPhone, cleanPhone, fmtDate, fmtDateFull, weekday } from "../utils";
 import { gerarCertificadoPDF, gerarCodigo, fmtDateBR } from "../certificado";
 
-export default function Admin() {
+export default function Admin({ onLogout }) {
   const navigate = useNavigate();
   const [tab, setTab] = useState("turmas");
   const [turmas, setTurmas] = useState([]);
@@ -138,9 +138,18 @@ export default function Admin() {
           <span style={{ color: "#444", fontWeight: 400 }}>|</span>
           <span style={{ color: "#999", fontWeight: 400, fontSize: 14 }}>Controle de Presença</span>
         </h1>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ width: 7, height: 7, borderRadius: "50%", background: connected ? "#27ae60" : "#e74c3c" }} />
-          <span style={{ color: "#777", fontSize: 11 }}>{connected ? "Supabase conectado" : "Não conectado"}</span>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <div style={{ width: 7, height: 7, borderRadius: "50%", background: connected ? "#27ae60" : "#e74c3c" }} />
+            <span style={{ color: "#777", fontSize: 11 }}>{connected ? "Supabase conectado" : "Não conectado"}</span>
+          </div>
+          {onLogout && (
+            <button onClick={onLogout} style={{
+              padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif",
+              fontWeight: 600, background: "rgba(255,255,255,0.05)", color: "#888",
+              border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, cursor: "pointer",
+            }}>Sair</button>
+          )}
         </div>
       </div>
 
