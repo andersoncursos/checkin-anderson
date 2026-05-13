@@ -46,22 +46,38 @@ export default function Admin({ onLogout }) {
   useEffect(() => { carregarDados(); }, [carregarDados]);
 
   // --- Turma ---
+  const isWeekend = novaTurma.carga_horaria === "18";
+
   const criarTurma = async () => {
     if (!novaTurma.nome || !novaTurma.curso) return;
     const datasValidas = datasAulas.filter((d) => d.data);
     if (!datasValidas.length) { alert("Adicione pelo menos uma data de aula."); return; }
     try {
       const [turma] = await query("turmas", { method: "POST", body: novaTurma });
-      for (const da of datasValidas) {
-        await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: da.descricao } });
+
+      // For weekend turmas: each date creates 2 aulas (manha + tarde)
+      const aulasParaCalendar = [];
+      if (isWeekend) {
+        for (const da of datasValidas) {
+          await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: (da.descricao ? da.descricao + " — " : "") + "Manhã", turno: "manha" } });
+          await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: (da.descricao ? da.descricao + " — " : "") + "Tarde", turno: "tarde" } });
+          aulasParaCalendar.push({ data: da.data, descricao: "Manhã", horario_inicio: "09:00", horario_fim: "12:00" });
+          aulasParaCalendar.push({ data: da.data, descricao: "Tarde", horario_inicio: "14:30", horario_fim: "18:00" });
+        }
+      } else {
+        for (const da of datasValidas) {
+          await query("aulas", { method: "POST", body: { turma_id: turma.id, data_aula: da.data, descricao: da.descricao } });
+          aulasParaCalendar.push({ data: da.data, descricao: da.descricao, horario_inicio: novaTurma.horario_inicio, horario_fim: novaTurma.horario_fim });
+        }
       }
+
       // Auto-create Google Calendar events
       try {
         const calRes = await fetch("/api/criar-eventos-calendar", {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             turma: { nome: novaTurma.nome, curso: novaTurma.curso, horario_inicio: novaTurma.horario_inicio, horario_fim: novaTurma.horario_fim },
-            aulas: datasValidas.map((d) => ({ data: d.data, descricao: d.descricao })),
+            aulas: aulasParaCalendar,
           }),
         });
         const calData = await calRes.json();
@@ -629,8 +645,21 @@ export default function Admin({ onLogout }) {
               <div><label style={lbl}>Carga Horária</label><select style={{ ...inp, appearance: "auto" }} value={novaTurma.carga_horaria} onChange={(e) => setNovaTurma({ ...novaTurma, carga_horaria: e.target.value })}><option value="18">18h (Fim de semana)</option><option value="30">30h (Semana)</option></select></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 14, marginBottom: 14 }}>
-              <div><label style={lbl}>🕐 Horário Início (check-in)</label><input type="time" style={inp} value={novaTurma.horario_inicio} onChange={(e) => setNovaTurma({ ...novaTurma, horario_inicio: e.target.value })} /></div>
-              <div><label style={lbl}>🕐 Horário Fim (check-in)</label><input type="time" style={inp} value={novaTurma.horario_fim} onChange={(e) => setNovaTurma({ ...novaTurma, horario_fim: e.target.value })} /></div>
+              {isWeekend ? (
+                <div style={{ gridColumn: "1 / 3" }}>
+                  <label style={lbl}>🕐 Horários (Fim de semana)</label>
+                  <div style={{ ...inp, color: "#C8A96E", fontSize: 12, lineHeight: 1.6, background: "rgba(200,169,110,0.06)" }}>
+                    Manhã: 09:00 às 12:00 · Check-in: 09:00-12:00<br/>
+                    Tarde: 14:30 às 18:00 · Check-in: 14:30-16:00<br/>
+                    <span style={{ color: "#888", fontSize: 11 }}>4 check-ins por turma (2 por dia × 2 dias)</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div><label style={lbl}>🕐 Horário Início (check-in)</label><input type="time" style={inp} value={novaTurma.horario_inicio} onChange={(e) => setNovaTurma({ ...novaTurma, horario_inicio: e.target.value })} /></div>
+                  <div><label style={lbl}>🕐 Horário Fim (check-in)</label><input type="time" style={inp} value={novaTurma.horario_fim} onChange={(e) => setNovaTurma({ ...novaTurma, horario_fim: e.target.value })} /></div>
+                </>
+              )}
               <div><label style={lbl}>📍 Local da Aula</label><button onClick={() => {
                 navigator.geolocation.getCurrentPosition((pos) => {
                   setNovaTurma({ ...novaTurma, local_lat: pos.coords.latitude, local_lng: pos.coords.longitude });

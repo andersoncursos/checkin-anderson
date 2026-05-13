@@ -57,8 +57,11 @@ export default async function handler(req) {
     for (let i = 0; i < aulas.length; i++) {
       const aula = aulas[i];
       const isLast = i === aulas.length - 1;
-      const summary = `${turma.curso} — Aula ${i + 1} (${turma.nome})${isLast ? " 🎓 Última aula!" : ""}`;
-      const description = `${turma.nome} — ${turma.curso}${isLast ? " (Última aula!)" : ""}\nAnderson Cursos e Treinamentos`;
+      const aulaHi = aula.horario_inicio || hi;
+      const aulaHf = aula.horario_fim || hf;
+      const descLabel = aula.descricao ? ` — ${aula.descricao}` : "";
+      const summary = `${turma.curso} — Aula ${i + 1}${descLabel} (${turma.nome})${isLast ? " 🎓" : ""}`;
+      const description = `${turma.nome} — ${turma.curso}${descLabel}\nAnderson Cursos e Treinamentos`;
 
       const eventRes = await fetch(
         "https://www.googleapis.com/calendar/v3/calendars/primary/events",
@@ -73,14 +76,14 @@ export default async function handler(req) {
             description,
             location: "João Pessoa — PB",
             start: {
-              dateTime: `${aula.data}T${hi}:00`,
+              dateTime: `${aula.data}T${aulaHi}:00`,
               timeZone: "America/Recife",
             },
             end: {
-              dateTime: `${aula.data}T${hf}:00`,
+              dateTime: `${aula.data}T${aulaHf}:00`,
               timeZone: "America/Recife",
             },
-            colorId: "6", // Tangerine
+            colorId: "6",
             reminders: {
               useDefault: false,
               overrides: [

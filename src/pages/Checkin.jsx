@@ -88,30 +88,36 @@ export default function Checkin() {
       .then((d) => {
         if (!d[0]) return;
         setTurma(d[0]);
-        // Check time window
-        const t = d[0];
-        if (t.horario_inicio && t.horario_fim) {
-          const now = new Date();
-          const [hi, mi] = t.horario_inicio.split(":").map(Number);
-          const [hf, mf] = t.horario_fim.split(":").map(Number);
-          const nowMin = now.getHours() * 60 + now.getMinutes();
-          const iniMin = hi * 60 + mi - 30; // 30 min antes
-          const fimMin = hf * 60 + mf + 30; // 30 min depois
-          if (nowMin < iniMin || nowMin > fimMin) setForaHorario(true);
-        }
       })
       .catch(() => {});
 
     const hoje = todayStr();
-    query("aulas", { qs: `?turma_id=eq.${turmaId}&data_aula=eq.${hoje}&select=*` })
-      .then((d) => {
-        if (d[0]) setAula(d[0]);
-        else {
+    query("aulas", { qs: `?turma_id=eq.${turmaId}&data_aula=eq.${hoje}&select=*&order=turno.asc` })
+      .then((aulasHoje) => {
+        if (!aulasHoje.length) {
           setNoClass(true);
-          // Find next class
           query("aulas", { qs: `?turma_id=eq.${turmaId}&data_aula=gt.${hoje}&select=*&order=data_aula.asc&limit=1` })
             .then((next) => next[0] && setProxAula(next[0]))
             .catch(() => {});
+          return;
+        }
+
+        // If multiple aulas today (weekend: manha + tarde), pick the right one based on time
+        if (aulasHoje.length > 1) {
+          const now = new Date();
+          const nowMin = now.getHours() * 60 + now.getMinutes();
+          // Tarde starts at ~13:00, so if after 13:00 pick tarde, else manha
+          const tarde = aulasHoje.find((a) => a.turno === "tarde");
+          const manha = aulasHoje.find((a) => a.turno === "manha");
+          if (nowMin >= 780 && tarde) { // 13:00 = 780 min
+            setAula(tarde);
+          } else if (manha) {
+            setAula(manha);
+          } else {
+            setAula(aulasHoje[0]);
+          }
+        } else {
+          setAula(aulasHoje[0]);
         }
       })
       .catch(() => setNoClass(true));
@@ -132,16 +138,26 @@ export default function Checkin() {
   const confirmarCheckin = async () => {
     if (!aula) { setError("Nenhuma aula cadastrada para hoje nessa turma."); return; }
 
-    // Time window check
-    if (turma?.horario_inicio && turma?.horario_fim) {
-      const now = new Date();
-      const [hi, mi] = turma.horario_inicio.split(":").map(Number);
-      const [hf, mf] = turma.horario_fim.split(":").map(Number);
-      const nowMin = now.getHours() * 60 + now.getMinutes();
+    // Time window check based on turno
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    let checkHi, checkHf;
+
+    if (aula.turno === "manha") {
+      checkHi = "09:00"; checkHf = "12:00";
+    } else if (aula.turno === "tarde") {
+      checkHi = "14:30"; checkHf = "16:00";
+    } else if (turma?.horario_inicio && turma?.horario_fim) {
+      checkHi = turma.horario_inicio; checkHf = turma.horario_fim;
+    }
+
+    if (checkHi && checkHf) {
+      const [hi, mi] = checkHi.split(":").map(Number);
+      const [hf, mf] = checkHf.split(":").map(Number);
       const iniMin = hi * 60 + mi - 30;
       const fimMin = hf * 60 + mf + 30;
       if (nowMin < iniMin || nowMin > fimMin) {
-        setError(`Check-in disponível apenas entre ${turma.horario_inicio} e ${turma.horario_fim} (com 30min de tolerância).`);
+        setError(`Check-in disponível entre ${checkHi} e ${checkHf} (com 30min de tolerância).`);
         return;
       }
     }
