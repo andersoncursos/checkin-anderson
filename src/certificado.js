@@ -1,4 +1,4 @@
-import { LOGO_B64, SIG_B64 } from "../assets";
+import { LOGO_B64, SIG_B64 } from "./assets";
 
 // Month names in Portuguese
 const MESES = [
