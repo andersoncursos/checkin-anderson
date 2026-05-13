@@ -166,6 +166,90 @@ export default function Admin({ onLogout }) {
     });
   };
 
+  // --- Template WhatsApp ---
+  const copiarWhatsApp = (turmaId) => {
+    const turma = turmas.find((t) => t.id === turmaId);
+    if (!turma) return;
+    const link = `${window.location.origin}/c/${turmaId}`;
+    const aulaHoje = aulas.find((a) => a.turma_id === turmaId && a.data_aula === hoje);
+    const msg = aulaHoje
+      ? `📚 *${turma.curso} — ${turma.nome}*\n\n✅ Hora do check-in! Registre sua presença na aula de hoje:\n\n👉 ${link}\n\nÉ rápido: abra o link, digite seu celular e confirme. Bom curso! 🚀`
+      : `📚 *${turma.curso} — ${turma.nome}*\n\nLink de check-in para a próxima aula:\n\n👉 ${link}\n\nAbra no dia da aula, digite seu celular e confirme sua presença. 📱`;
+    navigator.clipboard.writeText(msg).then(() => alert("Mensagem copiada! Cole no WhatsApp.")).catch(() => prompt("Copie:", msg));
+  };
+
+  // --- Lembrete de aula por e-mail ---
+  const enviarLembrete = async (turmaId, dataAula) => {
+    const turma = turmas.find((t) => t.id === turmaId);
+    if (!turma) return;
+    const alunosT = alunosDaTurma(turmaId);
+    const comEmail = alunosT.filter((a) => a.email);
+    if (!comEmail.length) { alert("Nenhum aluno com e-mail nessa turma."); return; }
+    const aula = aulas.find((a) => a.turma_id === turmaId && a.data_aula === dataAula);
+    const link = `${window.location.origin}/c/${turmaId}`;
+
+    const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+    const [y, m, d] = dataAula.split("-");
+    const dataFormatada = `${parseInt(d)} de ${MESES[parseInt(m)-1]}`;
+    const diaSemana = weekday(dataAula);
+
+    if (!confirm(`Enviar lembrete de aula (${dataFormatada}) para ${comEmail.length} aluno(s)?`)) return;
+    setGerando(true);
+    let ok = 0;
+    for (const al of comEmail) {
+      try {
+        await fetch("/api/enviar-certificado", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: al.email,
+            nomeAluno: al.nome,
+            nomeCurso: turma.curso,
+            codigo: "__lembrete__",
+            pdfBase64: null,
+            assunto: `Lembrete: Aula de ${turma.curso} — ${dataFormatada}`,
+            htmlCustom: `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;"><div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1></div><div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;"><p style="color:#F1EFE8;font-size:16px;margin:0 0 12px;">Olá, <strong>${al.nome}</strong>! 👋</p><p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Lembrete: sua aula de <strong style="color:#C8A96E;">${turma.curso}</strong> é <strong style="color:#F1EFE8;">${diaSemana}, ${dataFormatada}</strong>.</p>${aula?.descricao ? `<p style="color:#888;font-size:13px;margin:0 0 16px;">${aula.descricao}</p>` : ""}<div style="text-align:center;margin:20px 0;"><a href="${link}" style="display:inline-block;background:linear-gradient(135deg,#C8A96E,#b8954e);color:#1A1A18;font-weight:700;padding:14px 28px;border-radius:8px;text-decoration:none;font-size:14px;">📱 FAZER CHECK-IN</a></div><p style="color:#666;font-size:12px;margin:0;">Ou acesse: ${link}</p></div><div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div></div>`,
+          }),
+        });
+        ok++;
+      } catch {}
+    }
+    setGerando(false);
+    alert(`${ok}/${comEmail.length} lembretes enviados!`);
+  };
+
+  // --- Parabéns 100% presença ---
+  const enviarParabens = async (turmaId) => {
+    const turma = turmas.find((t) => t.id === turmaId);
+    if (!turma) return;
+    const aulasT = aulasDaTurma(turmaId);
+    const alunosT = alunosDaTurma(turmaId);
+    const com100 = alunosT.filter((al) => {
+      if (!al.email) return false;
+      const pres = aulasT.filter((a) => temCheckin(al.id, a.id)).length;
+      return pres === aulasT.length && aulasT.length > 0;
+    });
+    if (!com100.length) { alert("Nenhum aluno com 100% de presença e e-mail cadastrado."); return; }
+    if (!confirm(`Enviar parabéns para ${com100.length} aluno(s) com 100% de presença?`)) return;
+    setGerando(true);
+    let ok = 0;
+    for (const al of com100) {
+      try {
+        await fetch("/api/enviar-certificado", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: al.email, nomeAluno: al.nome, nomeCurso: turma.curso,
+            codigo: "__parabens__", pdfBase64: null,
+            assunto: `Parabéns! 100% de presença em ${turma.curso} 🏆`,
+            htmlCustom: `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;"><div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1></div><div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;text-align:center;"><div style="font-size:60px;margin-bottom:16px;">🏆</div><p style="color:#F1EFE8;font-size:20px;font-weight:700;margin:0 0 12px;">Parabéns, ${al.nome}!</p><p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">Você atingiu <strong style="color:#2ecc71;">100% de presença</strong> no curso <strong style="color:#C8A96E;">${turma.curso}</strong>!</p><p style="color:#999;font-size:13px;line-height:1.6;margin:0;">Seu comprometimento e dedicação são admiráveis. Continue assim! Seu certificado será emitido em breve.</p></div><div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div></div>`,
+          }),
+        });
+        ok++;
+      } catch {}
+    }
+    setGerando(false);
+    alert(`${ok}/${com100.length} mensagens de parabéns enviadas!`);
+  };
+
   // --- Tabs ---
   const tabs = [
     { id: "dashboard", label: "Dashboard", icon: "🏠" },
@@ -277,13 +361,10 @@ export default function Admin({ onLogout }) {
                         <span style={{ color: "#C8A96E", fontSize: 12, marginLeft: 8 }}>{turma?.curso}</span>
                         {aula.descricao && <span style={{ color: "#666", fontSize: 11, marginLeft: 8 }}>— {aula.descricao}</span>}
                       </div>
-                      <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                        <span style={{ color: presentes > 0 ? "#2ecc71" : "#555", fontSize: 13, fontWeight: 700 }}>{presentes}/{alunosT.length} presentes</span>
-                        <button onClick={() => copiarLink(aula.turma_id)} style={{
-                          padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700,
-                          background: "rgba(200,169,110,0.12)", color: "#C8A96E",
-                          border: "1px solid rgba(200,169,110,0.25)", borderRadius: 6, cursor: "pointer",
-                        }}>📋 Link</button>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                        <span style={{ color: presentes > 0 ? "#2ecc71" : "#555", fontSize: 13, fontWeight: 700 }}>{presentes}/{alunosT.length}</span>
+                        <button onClick={() => copiarWhatsApp(aula.turma_id)} style={{ padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(37,211,102,0.12)", color: "#25d366", border: "1px solid rgba(37,211,102,0.25)", borderRadius: 6, cursor: "pointer" }}>💬 WhatsApp</button>
+                        <button onClick={() => copiarLink(aula.turma_id)} style={{ padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(200,169,110,0.12)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.25)", borderRadius: 6, cursor: "pointer" }}>📋 Link</button>
                       </div>
                     </div>
                   );
@@ -299,17 +380,31 @@ export default function Admin({ onLogout }) {
                   const aulasT = aulasDaTurma(t.id);
                   const alunosT = alunosDaTurma(t.id);
                   const proxAula = aulasT.find((a) => a.data_aula >= hoje);
+                  const com100 = alunosT.filter((al) => { const p = aulasT.filter((a) => temCheckin(al.id, a.id)).length; return p === aulasT.length && aulasT.length > 0; });
                   return (
                     <div key={t.id} style={{
                       background: "rgba(255,255,255,0.025)", borderRadius: 10, padding: "12px 18px",
                       border: "1px solid rgba(200,169,110,0.08)", marginBottom: 6,
-                      display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8,
                     }}>
-                      <div>
-                        <span style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 13 }}>{t.nome}</span>
-                        <span style={{ color: "#888", fontSize: 11, marginLeft: 8 }}>{t.curso} · {alunosT.length} alunos · {aulasT.length} aulas</span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                        <div>
+                          <span style={{ color: "#F1EFE8", fontWeight: 700, fontSize: 13 }}>{t.nome}</span>
+                          <span style={{ color: "#888", fontSize: 11, marginLeft: 8 }}>{t.curso} · {alunosT.length} alunos · {aulasT.length} aulas</span>
+                        </div>
+                        {proxAula && <span style={{ color: "#555", fontSize: 11 }}>Próxima: {fmtDate(proxAula.data_aula)} ({weekday(proxAula.data_aula)})</span>}
                       </div>
-                      {proxAula && <span style={{ color: "#555", fontSize: 11 }}>Próxima: {fmtDate(proxAula.data_aula)} ({weekday(proxAula.data_aula)})</span>}
+                      <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                        {proxAula && (
+                          <button onClick={() => enviarLembrete(t.id, proxAula.data_aula)} disabled={gerando} style={{ padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(52,152,219,0.12)", color: "#3498db", border: "1px solid rgba(52,152,219,0.25)", borderRadius: 6, cursor: "pointer" }}>
+                            📧 Lembrete próxima aula
+                          </button>
+                        )}
+                        {com100.length > 0 && (
+                          <button onClick={() => enviarParabens(t.id)} disabled={gerando} style={{ padding: "5px 12px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(241,196,15,0.12)", color: "#f1c40f", border: "1px solid rgba(241,196,15,0.25)", borderRadius: 6, cursor: "pointer" }}>
+                            🏆 Parabéns 100% ({com100.length})
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -389,10 +484,14 @@ export default function Admin({ onLogout }) {
                           <span style={{ color: "#C8A96E", fontSize: 12 }}>{t.curso}</span>
                           <span style={{ color: "#555", fontSize: 11 }}>{aulasT.length} aulas · {t.carga_horaria || "30"}h</span>
                         </div>
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                           <button onClick={(e) => { e.stopPropagation(); copiarLink(t.id); }}
                             style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(200,169,110,0.12)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.25)", borderRadius: 8, cursor: "pointer" }}>
-                            📋 COPIAR LINK
+                            📋 LINK
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); copiarWhatsApp(t.id); }}
+                            style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(37,211,102,0.12)", color: "#25d366", border: "1px solid rgba(37,211,102,0.25)", borderRadius: 8, cursor: "pointer" }}>
+                            💬 WHATSAPP
                           </button>
                           <button onClick={(e) => { e.stopPropagation(); navigate(`/c/${t.id}`); }}
                             style={{ padding: "6px 14px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.12)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.25)", borderRadius: 8, cursor: "pointer" }}>

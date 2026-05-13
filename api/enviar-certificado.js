@@ -11,10 +11,38 @@ export default async function handler(req) {
   }
 
   try {
-    const { to, nomeAluno, nomeCurso, codigo, pdfBase64 } = await req.json();
+    const { to, nomeAluno, nomeCurso, codigo, pdfBase64, assunto, htmlCustom } = await req.json();
 
-    if (!to || !pdfBase64) {
-      return new Response(JSON.stringify({ error: "Dados incompletos" }), { status: 400 });
+    if (!to) {
+      return new Response(JSON.stringify({ error: "Destinatário não informado" }), { status: 400 });
+    }
+
+    // Custom HTML email (lembretes, parabéns)
+    if (htmlCustom) {
+      const resendRes = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+        },
+        body: JSON.stringify({
+          from: "Anderson Cursos <contato@andersoncursos.com>",
+          to: [to],
+          subject: assunto || `Anderson Cursos — ${nomeCurso}`,
+          html: htmlCustom,
+        }),
+      });
+      const resendData = await resendRes.json();
+      if (resendRes.ok) {
+        return new Response(JSON.stringify({ ok: true, id: resendData.id }), { status: 200 });
+      } else {
+        return new Response(JSON.stringify({ ok: false, error: resendData.message || "Erro Resend" }), { status: 400 });
+      }
+    }
+
+    // Certificate email (with PDF attachment)
+    if (!pdfBase64) {
+      return new Response(JSON.stringify({ error: "PDF não fornecido" }), { status: 400 });
     }
 
     const emailHtml = `
