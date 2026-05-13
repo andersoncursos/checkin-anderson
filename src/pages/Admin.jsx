@@ -257,6 +257,7 @@ export default function Admin({ onLogout }) {
     { id: "alunos", label: "Alunos", icon: "👥" },
     { id: "relatorio", label: "Presença", icon: "📊" },
     { id: "certificados", label: "Certificados", icon: "📜" },
+    { id: "relatorios", label: "Relatórios", icon: "📈" },
     { id: "setup", label: "Setup", icon: "⚙️" },
   ];
 
@@ -743,6 +744,161 @@ export default function Admin({ onLogout }) {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+
+        {/* ========== RELATÓRIOS ========== */}
+        {tab === "relatorios" && (
+          <div>
+            <h2 style={{ color: "#F1EFE8", fontSize: 15, fontWeight: 700, marginBottom: 20 }}>Relatórios</h2>
+
+            {/* Exportar Presença */}
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📊 Exportar Mapa de Presença</h3>
+              <div style={{ display: "flex", gap: 14, alignItems: "flex-end", flexWrap: "wrap", marginBottom: 14 }}>
+                <div>
+                  <label style={lbl}>Turma</label>
+                  <select style={{ ...inp, appearance: "auto", minWidth: 250 }} value={filtroTurma} onChange={(e) => setFiltroTurma(e.target.value)}>
+                    <option value="">Selecione...</option>
+                    {turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso}</option>)}
+                  </select>
+                </div>
+                {filtroTurma && (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={async () => {
+                      const turma = turmas.find((t) => t.id === filtroTurma);
+                      const aulasT = aulasDaTurma(filtroTurma);
+                      const alunosT = alunosDaTurma(filtroTurma);
+                      if (!alunosT.length) return;
+                      const { jsPDF } = await import("jspdf");
+                      const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+                      doc.setFontSize(16); doc.setFont("helvetica","bold");
+                      doc.text(`Mapa de Presença — ${turma.nome} (${turma.curso})`, 15, 15);
+                      doc.setFontSize(10); doc.setFont("helvetica","normal");
+                      doc.text(`Período: ${aulasT.length ? fmtDateFull(aulasT[0].data_aula) + " a " + fmtDateFull(aulasT[aulasT.length-1].data_aula) : "—"} · ${alunosT.length} alunos · ${aulasT.length} aulas`, 15, 22);
+                      let y = 32;
+                      doc.setFontSize(8); doc.setFont("helvetica","bold");
+                      doc.text("Aluno", 15, y);
+                      aulasT.forEach((a, i) => doc.text(`A${i+1}`, 75 + i * 18, y, { align: "center" }));
+                      doc.text("Total", 75 + aulasT.length * 18 + 5, y);
+                      y += 2; doc.setLineWidth(0.3); doc.line(15, y, 280, y); y += 5;
+                      doc.setFont("helvetica","normal");
+                      alunosT.forEach((al) => {
+                        if (y > 190) { doc.addPage(); y = 15; }
+                        doc.text(al.nome.substring(0, 35), 15, y);
+                        let total = 0;
+                        aulasT.forEach((a, i) => {
+                          const ok = temCheckin(al.id, a.id);
+                          if (ok) total++;
+                          doc.text(ok ? "✓" : "·", 75 + i * 18, y, { align: "center" });
+                        });
+                        const pct = aulasT.length ? Math.round((total/aulasT.length)*100) : 0;
+                        doc.text(`${total}/${aulasT.length} (${pct}%)`, 75 + aulasT.length * 18 + 5, y);
+                        y += 6;
+                      });
+                      doc.save(`Presenca_${turma.nome.replace(/\s+/g,"_")}.pdf`);
+                    }} style={{ ...btnP, padding: "10px 18px", fontSize: 12 }}>📄 Exportar PDF</button>
+                    <button onClick={() => {
+                      const turma = turmas.find((t) => t.id === filtroTurma);
+                      const aulasT = aulasDaTurma(filtroTurma);
+                      const alunosT = alunosDaTurma(filtroTurma);
+                      if (!alunosT.length) return;
+                      let csv = "Aluno;" + aulasT.map((a,i) => `Aula ${i+1} (${fmtDate(a.data_aula)})`).join(";") + ";Total;%\n";
+                      alunosT.forEach((al) => {
+                        let total = 0;
+                        const cols = aulasT.map((a) => { const ok = temCheckin(al.id, a.id); if (ok) total++; return ok ? "P" : "F"; });
+                        const pct = aulasT.length ? Math.round((total/aulasT.length)*100) : 0;
+                        csv += `${al.nome};${cols.join(";")};${total}/${aulasT.length};${pct}%\n`;
+                      });
+                      const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+                      const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+                      a.download = `Presenca_${turma.nome.replace(/\s+/g,"_")}.csv`; a.click();
+                    }} style={{ ...btnP, padding: "10px 18px", fontSize: 12, background: "linear-gradient(135deg, #27ae60, #1e8449)" }}>📊 Exportar Excel/CSV</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Alunos por curso */}
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>👥 Alunos por Curso</h3>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Curso", "Turmas", "Total Alunos", "Com Certificado", "Taxa Certificação"].map((h) => (
+                        <th key={h} style={{ textAlign: "left", padding: "10px 16px", color: "#C8A96E", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(200,169,110,0.12)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const cursos = {};
+                      turmas.forEach((t) => {
+                        if (!cursos[t.curso]) cursos[t.curso] = { turmas: 0, alunos: 0, certs: 0 };
+                        cursos[t.curso].turmas++;
+                        cursos[t.curso].alunos += alunos.filter((a) => a.turma_id === t.id).length;
+                        cursos[t.curso].certs += certificados.filter((c) => c.turma_id === t.id).length;
+                      });
+                      return Object.entries(cursos).map(([curso, data]) => (
+                        <tr key={curso}>
+                          <td style={{ padding: "11px 16px", color: "#F1EFE8", fontSize: 13, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{curso}</td>
+                          <td style={{ padding: "11px 16px", color: "#888", fontSize: 13, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.turmas}</td>
+                          <td style={{ padding: "11px 16px", color: "#C8A96E", fontSize: 13, fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.alunos}</td>
+                          <td style={{ padding: "11px 16px", color: "#2ecc71", fontSize: 13, fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.certs}</td>
+                          <td style={{ padding: "11px 16px", color: "#888", fontSize: 13, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.alunos ? Math.round((data.certs/data.alunos)*100) : 0}%</td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+              <div style={{ marginTop: 12, padding: "12px 16px", background: "rgba(200,169,110,0.06)", borderRadius: 10, border: "1px solid rgba(200,169,110,0.1)" }}>
+                <p style={{ color: "#C8A96E", fontSize: 12, fontWeight: 600, margin: 0 }}>
+                  Total geral: {alunos.length} alunos · {turmas.length} turmas · {certificados.length} certificados emitidos
+                </p>
+              </div>
+            </div>
+
+            {/* Resumo por período */}
+            <div style={{ marginBottom: 28 }}>
+              <h3 style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📈 Resumo por Período</h3>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                  <thead>
+                    <tr>
+                      {["Mês/Ano", "Turmas Iniciadas", "Alunos Matriculados", "Certificados Emitidos"].map((h) => (
+                        <th key={h} style={{ textAlign: "left", padding: "10px 16px", color: "#C8A96E", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(200,169,110,0.12)" }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(() => {
+                      const meses = {};
+                      const NOMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+                      turmas.forEach((t) => {
+                        const d = new Date(t.criado_em);
+                        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+                        const label = `${NOMES[d.getMonth()]}/${d.getFullYear()}`;
+                        if (!meses[key]) meses[key] = { label, turmas: 0, alunos: 0, certs: 0 };
+                        meses[key].turmas++;
+                        meses[key].alunos += alunos.filter((a) => a.turma_id === t.id).length;
+                        meses[key].certs += certificados.filter((c) => c.turma_id === t.id).length;
+                      });
+                      return Object.entries(meses).sort((a,b) => b[0].localeCompare(a[0])).map(([key, data]) => (
+                        <tr key={key}>
+                          <td style={{ padding: "11px 16px", color: "#F1EFE8", fontSize: 13, fontWeight: 600, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.label}</td>
+                          <td style={{ padding: "11px 16px", color: "#888", fontSize: 13, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.turmas}</td>
+                          <td style={{ padding: "11px 16px", color: "#C8A96E", fontSize: 13, fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.alunos}</td>
+                          <td style={{ padding: "11px 16px", color: "#2ecc71", fontSize: 13, fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{data.certs}</td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         )}
 
