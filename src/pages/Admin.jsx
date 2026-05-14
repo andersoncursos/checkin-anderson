@@ -101,6 +101,10 @@ export default function Admin({ onLogout }) {
       // Send welcome email
       const turma = turmas.find((t) => t.id === novoAluno.turma_id);
       if (novoAluno.email && turma) {
+        const aulasT = aulasDaTurma(turma.id);
+        const dataIni = aulasT.length ? fmtDateFull(aulasT[0].data_aula) : "";
+        const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
+        const periodo = dataIni && dataFin ? `${dataIni} a ${dataFin}` : "";
         enviarEmailGenerico(novoAluno.email, novoAluno.nome, turma.curso,
           `Bem-vindo(a) ao curso ${turma.curso}! 🎉`,
           `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
@@ -113,8 +117,9 @@ export default function Admin({ onLogout }) {
                 <p style="color:#C8A96E;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Informações do curso</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">📚 <strong>${turma.curso}</strong> — ${turma.nome}</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">⏱ Carga horária: ${getCH(turma.carga_horaria)}h</p>
+                ${periodo ? `<p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">📅 Período: ${periodo}</p>` : ""}
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">🕐 Horário: ${turma.carga_horaria === "18" ? "Sábado e Domingo, 09:00 às 12:00 e 14:30 às 18:00" : (turma.horario_inicio || "18:00") + " às " + (turma.horario_fim || "21:00")}</p>
-                <p style="color:#F1EFE8;font-size:13px;margin:0;">📍 Local: João Pessoa — PB</p>
+                <p style="color:#F1EFE8;font-size:13px;margin:0;">📍 Local: Anderson Cursos e Treinamentos</p>
               </div>
               <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">No dia da aula, você receberá um link no WhatsApp para registrar sua presença. É rápido: abra o link, digite seu celular e confirme.</p>
               <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0;">Qualquer dúvida, entre em contato pelo WhatsApp <strong style="color:#F1EFE8;">(83) 99658-4198</strong>.</p>
@@ -801,46 +806,59 @@ export default function Admin({ onLogout }) {
             {alunos.length === 0 ? (
               <p style={{ color: "#555", fontSize: 13 }}>Nenhum aluno cadastrado.</p>
             ) : (
-              <div style={{ overflowX: "auto" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                  <thead>
-                    <tr>{["Nome", "Celular", "E-mail", "Turma", ""].map((h) => (
-                      <th key={h || "acoes"} style={{ textAlign: "left", padding: "10px 16px", color: "#C8A96E", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(200,169,110,0.12)" }}>{h}</th>
-                    ))}</tr>
-                  </thead>
-                  <tbody>
-                    {alunos.map((a) => {
-                      const isEdit = editando?.id === a.id;
-                      return (
-                      <tr key={a.id}>
-                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                          {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.nome} onChange={(e) => setEditando({ ...editando, nome: e.target.value })} /> : <span style={{ color: "#F1EFE8", fontSize: 13, fontWeight: 600 }}>{a.nome}</span>}
-                        </td>
-                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                          {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12, width: 150 }} value={editando.celular} onChange={(e) => setEditando({ ...editando, celular: formatPhone(e.target.value) })} /> : <span style={{ color: "#888", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{formatPhone(a.celular)}</span>}
-                        </td>
-                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
-                          {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.email} onChange={(e) => setEditando({ ...editando, email: e.target.value })} placeholder="email@..." /> : <span style={{ color: "#888", fontSize: 12 }}>{a.email || "—"}</span>}
-                        </td>
-                        <td style={{ padding: "8px 16px", color: "#888", fontSize: 12, borderBottom: "1px solid rgba(255,255,255,0.03)" }}>{a.turmas?.nome || "—"}</td>
-                        <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}>
-                          {isEdit ? (
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button onClick={salvarEdicao} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.15)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 6, cursor: "pointer" }}>✓ Salvar</button>
-                              <button onClick={() => setEditando(null)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "transparent", color: "#888", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, cursor: "pointer" }}>✕</button>
-                            </div>
-                          ) : (
-                            <div style={{ display: "flex", gap: 6 }}>
-                              <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
-                              <button onClick={() => excluirAluno(a.id)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, cursor: "pointer" }}>🗑</button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+              <div>
+                {turmas.map((t) => {
+                  const alunosT = alunos.filter((a) => a.turma_id === t.id);
+                  if (!alunosT.length) return null;
+                  return (
+                    <div key={t.id} style={{ marginBottom: 24 }}>
+                      <div style={{ padding: "10px 16px", background: "rgba(200,169,110,0.06)", borderRadius: "10px 10px 0 0", border: "1px solid rgba(200,169,110,0.1)", borderBottom: "none" }}>
+                        <span style={{ color: "#C8A96E", fontSize: 12, fontWeight: 700 }}>{t.nome}</span>
+                        <span style={{ color: "#888", fontSize: 11, marginLeft: 8 }}>{t.curso} · {alunosT.length} aluno(s)</span>
+                      </div>
+                      <div style={{ overflowX: "auto", border: "1px solid rgba(200,169,110,0.1)", borderRadius: "0 0 10px 10px" }}>
+                        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                          <thead>
+                            <tr>{["Nome", "Celular", "E-mail", ""].map((h) => (
+                              <th key={h || "acoes"} style={{ textAlign: "left", padding: "8px 16px", color: "#666", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{h}</th>
+                            ))}</tr>
+                          </thead>
+                          <tbody>
+                            {alunosT.map((a) => {
+                              const isEdit = editando?.id === a.id;
+                              return (
+                              <tr key={a.id}>
+                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                  {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.nome} onChange={(e) => setEditando({ ...editando, nome: e.target.value })} /> : <span style={{ color: "#F1EFE8", fontSize: 13, fontWeight: 600 }}>{a.nome}</span>}
+                                </td>
+                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                  {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12, width: 150 }} value={editando.celular} onChange={(e) => setEditando({ ...editando, celular: formatPhone(e.target.value) })} /> : <span style={{ color: "#888", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{formatPhone(a.celular)}</span>}
+                                </td>
+                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                  {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.email} onChange={(e) => setEditando({ ...editando, email: e.target.value })} placeholder="email@..." /> : <span style={{ color: "#888", fontSize: 12 }}>{a.email || "—"}</span>}
+                                </td>
+                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}>
+                                  {isEdit ? (
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button onClick={salvarEdicao} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.15)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 6, cursor: "pointer" }}>✓ Salvar</button>
+                                      <button onClick={() => setEditando(null)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "transparent", color: "#888", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, cursor: "pointer" }}>✕</button>
+                                    </div>
+                                  ) : (
+                                    <div style={{ display: "flex", gap: 6 }}>
+                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                                      <button onClick={() => excluirAluno(a.id)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, cursor: "pointer" }}>🗑</button>
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
