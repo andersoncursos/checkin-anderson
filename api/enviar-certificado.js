@@ -11,26 +11,36 @@ export default async function handler(req) {
   }
 
   try {
-    const { to, nomeAluno, nomeCurso, codigo, pdfBase64, assunto, htmlCustom } = await req.json();
+    const { to, nomeAluno, nomeCurso, codigo, pdfBase64, assunto, htmlCustom, manualFilename } = await req.json();
 
     if (!to) {
       return new Response(JSON.stringify({ error: "Destinatário não informado" }), { status: 400 });
     }
 
-    // Custom HTML email (lembretes, parabéns)
+    // Custom HTML email (lembretes, parabéns, boas-vindas)
     if (htmlCustom) {
+      const emailPayload = {
+        from: "Anderson Cursos <contato@andersoncursos.com>",
+        to: [to],
+        subject: assunto || `Anderson Cursos — ${nomeCurso}`,
+        html: htmlCustom,
+      };
+
+      // Attach manual PDF if provided
+      if (pdfBase64 && manualFilename) {
+        emailPayload.attachments = [{
+          filename: manualFilename,
+          content: pdfBase64,
+        }];
+      }
+
       const resendRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${RESEND_API_KEY}`,
         },
-        body: JSON.stringify({
-          from: "Anderson Cursos <contato@andersoncursos.com>",
-          to: [to],
-          subject: assunto || `Anderson Cursos — ${nomeCurso}`,
-          html: htmlCustom,
-        }),
+        body: JSON.stringify(emailPayload),
       });
       const resendData = await resendRes.json();
       if (resendRes.ok) {

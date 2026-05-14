@@ -105,9 +105,23 @@ export default function Admin({ onLogout }) {
         const dataIni = aulasT.length ? fmtDateFull(aulasT[0].data_aula) : "";
         const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
         const periodo = dataIni && dataFin ? `${dataIni} a ${dataFin}` : "";
-        enviarEmailGenerico(novoAluno.email, novoAluno.nome, turma.curso,
-          `Bem-vindo(a) ao curso ${turma.curso}! 🎉`,
-          `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
+        const temManual = !!turma.manual_url;
+
+        // If turma has manual, fetch it and convert to base64
+        let manualBase64 = null;
+        if (temManual) {
+          try {
+            const pdfRes = await fetch(turma.manual_url);
+            const pdfBlob = await pdfRes.blob();
+            manualBase64 = await new Promise((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result.split(",")[1]);
+              reader.readAsDataURL(pdfBlob);
+            });
+          } catch { /* manual won't be attached */ }
+        }
+
+        const htmlEmail = `<div style="font-family:'Helvetica Neue',Arial,sans-serif;max-width:600px;margin:0 auto;background:#1A1A18;padding:40px 30px;border-radius:8px;">
             <div style="text-align:center;margin-bottom:30px;"><h1 style="color:#C8A96E;font-size:24px;margin:0;">Anderson Cursos</h1><p style="color:#888;font-size:12px;margin-top:4px;">Cursos & Treinamentos</p></div>
             <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(200,169,110,0.15);border-radius:8px;padding:24px;">
               <p style="color:#F1EFE8;font-size:16px;margin:0 0 12px;">Olá, <strong>${novoAluno.nome}</strong>! 👋</p>
@@ -121,12 +135,26 @@ export default function Admin({ onLogout }) {
                 <p style="color:#F1EFE8;font-size:13px;margin:0 0 4px;">🕐 Horário: ${turma.carga_horaria === "18" ? "Sábado e Domingo, 09:00 às 12:00 e 14:30 às 18:00" : (turma.horario_inicio || "18:00") + " às " + (turma.horario_fim || "21:00")}</p>
                 <p style="color:#F1EFE8;font-size:13px;margin:0;">📍 Local: Anderson Cursos e Treinamentos</p>
               </div>
+              ${temManual ? `<div style="background:rgba(39,174,96,0.08);border:1px solid rgba(39,174,96,0.2);border-radius:8px;padding:14px;margin-bottom:16px;">
+                <p style="color:#2ecc71;font-size:13px;font-weight:600;margin:0;">📄 Segue em anexo o <strong>Manual do Participante</strong>. Leia com atenção antes do início do curso!</p>
+              </div>` : ""}
               <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0 0 16px;">No dia da aula, você receberá um link no WhatsApp para registrar sua presença. É rápido: abra o link, digite seu celular e confirme.</p>
               <p style="color:#bbb;font-size:14px;line-height:1.7;margin:0;">Qualquer dúvida, entre em contato pelo WhatsApp <strong style="color:#F1EFE8;">(83) 99658-4198</strong>.</p>
             </div>
             <div style="text-align:center;padding-top:16px;border-top:1px solid rgba(200,169,110,0.1);margin-top:20px;"><p style="color:#666;font-size:11px;margin:0;">Anderson Cursos e Treinamentos · João Pessoa — PB</p></div>
-          </div>`
-        ).catch(() => {});
+          </div>`;
+
+        // Send via API with optional attachment
+        fetch("/api/enviar-certificado", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            to: novoAluno.email, nomeAluno: novoAluno.nome, nomeCurso: turma.curso,
+            codigo: "__boasvindas__", pdfBase64: manualBase64,
+            assunto: `Bem-vindo(a) ao curso ${turma.curso}! 🎉`,
+            htmlCustom: htmlEmail,
+            manualFilename: temManual ? `Manual_${turma.curso.replace(/\s+/g, "_")}.pdf` : null,
+          }),
+        }).catch(() => {});
       }
       setNovoAluno({ nome: "", celular: "", email: "", turma_id: "" });
       carregarDados();
@@ -774,6 +802,34 @@ export default function Admin({ onLogout }) {
                               }, () => alert("Permita o acesso à localização.")); }}
                                 style={{ padding: "3px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>📍 Definir local</button>
                             )}
+                          </div>
+                          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginTop: 8 }}>
+                            <span style={{ color: t.manual_url ? "#2ecc71" : "#555", fontSize: 10 }}>📄 {t.manual_url ? "Manual anexado ✓" : "Sem manual"}</span>
+                            <label style={{ padding: "3px 10px", fontSize: 10, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: t.manual_url ? "rgba(39,174,96,0.08)" : "rgba(200,169,110,0.08)", color: t.manual_url ? "#2ecc71" : "#C8A96E", border: t.manual_url ? "1px solid rgba(39,174,96,0.15)" : "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>
+                              {t.manual_url ? "📄 Trocar manual" : "📄 Upload manual (PDF)"}
+                              <input type="file" accept=".pdf" style={{ display: "none" }} onChange={async (e) => {
+                                const file = e.target.files[0];
+                                if (!file) return;
+                                if (file.size > 10 * 1024 * 1024) { alert("Arquivo muito grande (máx 10MB)."); return; }
+                                try {
+                                  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+                                  const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                                  const fileName = `manual_${t.id}_${Date.now()}.pdf`;
+                                  const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/manuais/${fileName}`, {
+                                    method: "POST",
+                                    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, "Content-Type": "application/pdf" },
+                                    body: file,
+                                  });
+                                  if (!uploadRes.ok) throw new Error("Falha no upload");
+                                  const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/manuais/${fileName}`;
+                                  await query("turmas", { method: "PATCH", qs: `?id=eq.${t.id}`, body: { manual_url: publicUrl } });
+                                  carregarDados();
+                                  alert("Manual enviado com sucesso! ✅");
+                                } catch (err) { alert("Erro: " + err.message); }
+                                e.target.value = "";
+                              }} />
+                            </label>
+                            {t.manual_url && <a href={t.manual_url} target="_blank" rel="noopener" style={{ fontSize: 10, color: "#3498db", textDecoration: "none" }}>👁 Ver manual</a>}
                           </div>
                         </div>
                       )}
