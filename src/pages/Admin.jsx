@@ -17,7 +17,7 @@ export default function Admin({ onLogout }) {
 
   const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30-noite", horario_inicio: "18:00", horario_fim: "21:00" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
-  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", cep: "", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
+  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", endereco_numero: "", bairro: "", cidade: "João Pessoa", estado: "PB", cep: "", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
   const [turmaExpandida, setTurmaExpandida] = useState(null);
   const [certTurma, setCertTurma] = useState("");
@@ -206,7 +206,7 @@ export default function Admin({ onLogout }) {
         } catch { /* contract failed silently */ }
       }
 
-      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", cep: "", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
+      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", endereco_numero: "", bairro: "", cidade: "João Pessoa", estado: "PB", cep: "", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
   };
@@ -217,6 +217,7 @@ export default function Admin({ onLogout }) {
       const body = { nome: editando.nome, celular: cleanPhone(editando.celular), email: editando.email };
       if (editando.cpf) body.cpf = editando.cpf;
       if (editando.endereco) body.endereco = editando.endereco;
+      if (editando.endereco_numero) body.endereco_numero = editando.endereco_numero;
       if (editando.bairro) body.bairro = editando.bairro;
       if (editando.cidade) body.cidade = editando.cidade;
       if (editando.estado) body.estado = editando.estado;
@@ -245,7 +246,7 @@ export default function Admin({ onLogout }) {
       clausulaPag = `2.1. O valor total do curso é de R$ ${pagamento.valor_total}, tendo o pagamento sido efetuado através de cartão de crédito em ${pagamento.parcelas}x de R$ ${pagamento.valor_parcela}.`;
     }
 
-    const enderecoCompleto = [aluno.endereco, aluno.bairro, aluno.cidade ? `${aluno.cidade}/${aluno.estado}` : "", aluno.cep ? `CEP: ${aluno.cep}` : ""].filter(Boolean).join(" - ");
+    const enderecoCompleto = [aluno.endereco, aluno.endereco_numero ? `nº ${aluno.endereco_numero}` : "", aluno.bairro, aluno.cidade ? `${aluno.cidade}/${aluno.estado}` : "", aluno.cep ? `CEP: ${aluno.cep}` : ""].filter(Boolean).join(" - ");
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;color:#222;max-width:700px;margin:40px auto;padding:20px}h1{text-align:center;font-size:14pt;font-weight:bold;margin-bottom:30px}.clausula{font-weight:bold;margin-top:20px}.assinatura{margin-top:50px;display:flex;justify-content:space-between}.assinatura-bloco{width:45%;text-align:center}.linha{border-top:1px solid #222;margin-top:60px;padding-top:5px}</style></head><body><h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS</h1><p>Pelo presente instrumento particular, de um lado, <strong>ANDERSON CURSOS E TREINAMENTOS LTDA</strong>, inscrita no CNPJ sob o nº 24.335.154/0001-00, com sede na Av. Presidente Epitácio Pessoa, 753 - Sala 305 - Empresarial Central Park - Bairro dos Estados - João Pessoa/PB, doravante denominada CONTRATADA, e de outro lado, <strong>${aluno.nome}</strong>, inscrito(a) no CPF/CNPJ sob o nº <strong>${aluno.cpf}</strong>, residente e domiciliado(a) em ${enderecoCompleto}, doravante denominado(a) CONTRATANTE, firmam o presente Contrato de Prestação de Serviços Educacionais, conforme as cláusulas e condições abaixo descritas:</p><p class="clausula">CLÁUSULA 1 - DO OBJETO</p><p>1.1. O presente contrato tem como objeto a prestação de serviços educacionais pela CONTRATADA ao CONTRATANTE, consistentes na oferta do curso presencial de <strong>${turma.curso}</strong>, conforme conteúdo programático previamente disponibilizado, com carga horária de <strong>${getCH(turma.carga_horaria)}h</strong>.</p><p>1.2. O curso será realizado nas dependências da CONTRATADA, localizada na Av. Presidente Epitácio Pessoa, 753 - Sala 305 - Empresarial Central Park - Bairro dos Estados - João Pessoa/PB, no período de ${periodo}, das ${horario}.</p><p class="clausula">CLÁUSULA 2 - DO VALOR E FORMA DE PAGAMENTO</p><p>${clausulaPag}</p><p>2.2. O pagamento foi efetuado por meio de ${pagamento.forma === "pix" ? "PIX" : "cartão de crédito"}.</p><p class="clausula">CLÁUSULA 3 - DA PROIBIÇÃO DE TROCA DE HORÁRIO OU TURMA</p><p>3.1. O CONTRATANTE está ciente de que não será permitido trocar o horário ou a turma inicialmente designada no momento da matrícula.</p><p>3.2. A vaga do CONTRATANTE é pessoal e intransferível, não podendo ser repassada para terceiros sob nenhuma hipótese.</p><p class="clausula">CLÁUSULA 4 - DA DESISTÊNCIA E MULTA</p><p>4.1. Em caso de desistência, o CONTRATANTE deverá comunicar a CONTRATADA por escrito com antecedência mínima de 7 dias antes do início do curso.</p><p>4.2. Caso a desistência ocorra com prazo inferior a 7 dias antes do início do curso, será aplicada uma multa de 20% do valor total do curso, a título de compensação pela quebra de contrato.</p><p>4.3. Caso a desistência ocorra após o início do curso, será aplicada uma multa de 10% do valor total do curso, a título de compensação pela quebra de contrato.</p><p class="clausula">CLÁUSULA 5 - DA RESPONSABILIDADE E OBRIGAÇÕES</p><p>5.1. A CONTRATADA se compromete a ministrar o curso de acordo com o conteúdo programático anunciado e dentro do período previamente informado.</p><p>5.2. O CONTRATANTE se compromete a frequentar as aulas no horário estipulado, respeitar as normas internas da CONTRATADA e zelar pelo bom andamento das atividades. Lembrando que não há reposição de aulas por faltas nas aulas.</p><p class="clausula">CLÁUSULA 6 – PROIBIÇÃO DE GRAVAÇÃO E DIVULGAÇÃO DE CONTEÚDO</p><p>Em conformidade com o disposto nos artigos 186 e 927 do Código Civil Brasileiro, que regulam a responsabilidade civil por atos ilícitos, fica expressamente vedado aos alunos, sob qualquer pretexto, realizar gravações, fotografias ou filmagens das aulas ministradas, bem como divulgar ou compartilhar, por qualquer meio, o conteúdo exposto em sala de aula, sem prévia autorização escrita da instituição de ensino e do respectivo professor.</p><p>A infração a esta cláusula sujeitará o aluno às penalidades previstas em contrato, podendo ensejar a sua responsabilização civil pelos danos morais e materiais causados à instituição de ensino, ao corpo docente e a terceiros envolvidos, sem prejuízo das sanções acadêmicas cabíveis.</p><p class="clausula">CLÁUSULA 7 - DAS CONDIÇÕES GERAIS</p><p>7.1. O presente contrato tem validade a partir da assinatura pelas partes e se encerra após a conclusão do curso, conforme descrito na Cláusula 1.</p><p>7.2. As partes elegem o foro da Comarca de João Pessoa para dirimir quaisquer questões oriundas deste contrato, com renúncia expressa de qualquer outro, por mais privilegiado que seja.</p><p>Por estarem de acordo com as cláusulas acima, as partes assinam o presente contrato em duas vias de igual teor e forma, na presença de testemunhas.</p><p>${dataContrato}</p><div class="assinatura"><div class="assinatura-bloco"><div class="linha"><strong>ANDERSON CURSOS E TREINAMENTOS LTDA</strong><br>24.335.154/0001-00</div></div><div class="assinatura-bloco"><div class="linha"><strong>${aluno.nome}</strong><br>${aluno.cpf}</div></div></div></body></html>`;
   };
@@ -287,7 +288,7 @@ export default function Admin({ onLogout }) {
     const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
     const periodo = dataIni && dataFin ? `${dataIni} a ${dataFin}` : "";
     const horario = turma.carga_horaria === "18" ? "9h às 12h e 14h30 às 18h" : `${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`;
-    const enderecoCompleto = [aluno.endereco, aluno.bairro, aluno.cidade ? `${aluno.cidade}/${aluno.estado}` : "", aluno.cep ? `CEP: ${aluno.cep}` : ""].filter(Boolean).join(" - ");
+    const enderecoCompleto = [aluno.endereco, aluno.endereco_numero ? `nº ${aluno.endereco_numero}` : "", aluno.bairro, aluno.cidade ? `${aluno.cidade}/${aluno.estado}` : "", aluno.cep ? `CEP: ${aluno.cep}` : ""].filter(Boolean).join(" - ");
 
     setGerando(true);
     try {
@@ -1139,8 +1140,9 @@ export default function Admin({ onLogout }) {
               <div><label style={lbl}>Celular (WhatsApp)</label><input placeholder="(83) 99999-9999" type="tel" style={inp} value={novoAluno.celular} onChange={(e) => setNovoAluno({ ...novoAluno, celular: formatPhone(e.target.value) })} /></div>
               <div><label style={lbl}>E-mail</label><input placeholder="aluno@email.com" type="email" style={inp} value={novoAluno.email} onChange={(e) => setNovoAluno({ ...novoAluno, email: e.target.value })} /></div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 0.7fr", gap: 14, marginBottom: 12 }}>
-              <div><label style={lbl}>Endereço (Rua e nº)</label><input placeholder="Rua Paulino de Albuquerque, 167" style={inp} value={novoAluno.endereco} onChange={(e) => setNovoAluno({ ...novoAluno, endereco: e.target.value })} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 0.5fr 1fr 1fr 0.8fr 0.4fr", gap: 14, marginBottom: 12 }}>
+              <div><label style={lbl}>Endereço (Rua)</label><input placeholder="Rua Paulino de Albuquerque" style={inp} value={novoAluno.endereco} onChange={(e) => setNovoAluno({ ...novoAluno, endereco: e.target.value })} /></div>
+              <div><label style={lbl}>Nº</label><input placeholder="167" style={inp} value={novoAluno.endereco_numero} onChange={(e) => setNovoAluno({ ...novoAluno, endereco_numero: e.target.value })} /></div>
               <div><label style={lbl}>Bairro</label><input placeholder="Jaguaribe" style={inp} value={novoAluno.bairro} onChange={(e) => setNovoAluno({ ...novoAluno, bairro: e.target.value })} /></div>
               <div><label style={lbl}>Cidade</label><input style={inp} value={novoAluno.cidade} onChange={(e) => setNovoAluno({ ...novoAluno, cidade: e.target.value })} /></div>
               <div><label style={lbl}>CEP</label><input placeholder="58000-000" style={inp} value={novoAluno.cep} onChange={(e) => {
@@ -1225,7 +1227,7 @@ export default function Admin({ onLogout }) {
                                     </div>
                                   ) : (
                                     <div style={{ display: "flex", gap: 6 }}>
-                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "", cpf: a.cpf || "", endereco: a.endereco || "", bairro: a.bairro || "", cidade: a.cidade || "João Pessoa", estado: a.estado || "PB", cep: a.cep || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "", cpf: a.cpf || "", endereco: a.endereco || "", endereco_numero: a.endereco_numero || "", bairro: a.bairro || "", cidade: a.cidade || "João Pessoa", estado: a.estado || "PB", cep: a.cep || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
                                       {!contrato && <button onClick={() => verContrato(a)} disabled={gerando} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(52,152,219,0.08)", color: "#3498db", border: "1px solid rgba(52,152,219,0.15)", borderRadius: 6, cursor: "pointer" }}>👁 Ver Contrato</button>}
                                       <button onClick={() => excluirAluno(a.id)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, cursor: "pointer" }}>🗑</button>
                                     </div>
@@ -1235,14 +1237,15 @@ export default function Admin({ onLogout }) {
                               {isEdit && (
                                 <tr>
                                   <td colSpan={5} style={{ padding: "6px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.03)", background: "rgba(200,169,110,0.03)" }}>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 0.7fr 0.5fr", gap: 8 }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.5fr 0.4fr 0.8fr 0.8fr 0.7fr 0.4fr", gap: 8 }}>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>CPF/CNPJ</label><input placeholder="000.000.000-00" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cpf} onChange={(e) => {
                                         let v = e.target.value.replace(/\D/g, "");
                                         if (v.length <= 11) { if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4"); else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3"); else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2"); }
                                         else { v = v.slice(0,14); v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/, "$1.$2.$3/$4-$5"); }
                                         setEditando({ ...editando, cpf: v });
                                       }} /></div>
-                                      <div><label style={{ ...lbl, fontSize: 9 }}>Endereço</label><input placeholder="Rua, nº" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.endereco} onChange={(e) => setEditando({ ...editando, endereco: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>Endereço (Rua)</label><input placeholder="Rua Paulino de Albuquerque" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.endereco} onChange={(e) => setEditando({ ...editando, endereco: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>Nº</label><input placeholder="167" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.endereco_numero} onChange={(e) => setEditando({ ...editando, endereco_numero: e.target.value })} /></div>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>Bairro</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.bairro} onChange={(e) => setEditando({ ...editando, bairro: e.target.value })} /></div>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>Cidade</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cidade} onChange={(e) => setEditando({ ...editando, cidade: e.target.value })} /></div>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>CEP</label><input placeholder="58000-000" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cep} onChange={(e) => {

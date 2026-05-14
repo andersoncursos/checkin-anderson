@@ -44,7 +44,7 @@ export default async function handler(req) {
 
 <h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS</h1>
 
-<p>Pelo presente instrumento particular, de um lado, <strong>ANDERSON CURSOS E TREINAMENTOS LTDA</strong>, inscrita no CNPJ sob o nº 24.335.154/0001-00, com sede na Av. Presidente Epitácio Pessoa, 753 - Sala 305 - Empresarial Central Park - Bairro dos Estados - João Pessoa/PB, doravante denominada CONTRATADA, e de outro lado, <strong>${aluno.nome}</strong>, inscrito no CPF sob o nº <strong>${aluno.cpf}</strong>, residente e domiciliado na ${aluno.endereco}, ${aluno.bairro} - ${aluno.cidade}/${aluno.estado}, doravante denominado CONTRATANTE, firmam o presente Contrato de Prestação de Serviços Educacionais, conforme as cláusulas e condições abaixo descritas:</p>
+<p>Pelo presente instrumento particular, de um lado, <strong>ANDERSON CURSOS E TREINAMENTOS LTDA</strong>, inscrita no CNPJ sob o nº 24.335.154/0001-00, com sede na Av. Presidente Epitácio Pessoa, 753 - Sala 305 - Empresarial Central Park - Bairro dos Estados - João Pessoa/PB, doravante denominada CONTRATADA, e de outro lado, <strong>${aluno.nome}</strong>, inscrito(a) no CPF/CNPJ sob o nº <strong>${aluno.cpf}</strong>, residente e domiciliado(a) em ${aluno.endereco}${aluno.bairro ? ", " + aluno.bairro : ""}${aluno.cidade ? " - " + aluno.cidade + "/" + aluno.estado : ""}, doravante denominado(a) CONTRATANTE, firmam o presente Contrato de Prestação de Serviços Educacionais, conforme as cláusulas e condições abaixo descritas:</p>
 
 <p class="clausula">CLÁUSULA 1 - DO OBJETO</p>
 
