@@ -643,6 +643,127 @@ export default function Admin({ onLogout }) {
               </div>
             )}
 
+
+            {/* Charts */}
+            {turmas.length > 0 && (
+              <div style={{ marginTop: 28 }}>
+                <h3 style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700, marginBottom: 16 }}>📊 Visão Geral</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+
+                  {/* Alunos por turma */}
+                  <div style={{ background: "rgba(255,255,255,0.025)", borderRadius: 12, padding: "16px 18px", border: "1px solid rgba(200,169,110,0.08)" }}>
+                    <p style={{ color: "#888", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 14px" }}>Alunos por turma</p>
+                    {turmas.map((t) => {
+                      const count = alunosDaTurma(t.id).length;
+                      const max = Math.max(...turmas.map((x) => alunosDaTurma(x.id).length), 1);
+                      const pct = (count / max) * 100;
+                      return (
+                        <div key={t.id} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ color: "#bbb", fontSize: 11 }}>{t.nome}</span>
+                            <span style={{ color: "#C8A96E", fontSize: 11, fontWeight: 700 }}>{count}</span>
+                          </div>
+                          <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,0.05)" }}>
+                            <div style={{ height: 8, borderRadius: 4, background: "linear-gradient(90deg, #C8A96E, #e0c68a)", width: `${pct}%`, transition: "width 0.5s" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Presença média por turma */}
+                  <div style={{ background: "rgba(255,255,255,0.025)", borderRadius: 12, padding: "16px 18px", border: "1px solid rgba(200,169,110,0.08)" }}>
+                    <p style={{ color: "#888", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 14px" }}>Presença média por turma</p>
+                    {turmas.map((t) => {
+                      const aulasT = aulasDaTurma(t.id);
+                      const alunosT = alunosDaTurma(t.id);
+                      let media = 0;
+                      if (aulasT.length && alunosT.length) {
+                        const totalPossivel = aulasT.length * alunosT.length;
+                        const totalPresente = alunosT.reduce((sum, al) => sum + aulasT.filter((a) => temCheckin(al.id, a.id)).length, 0);
+                        media = Math.round((totalPresente / totalPossivel) * 100);
+                      }
+                      const barColor = media >= 80 ? "#2ecc71" : media >= 50 ? "#f39c12" : "#e74c3c";
+                      return (
+                        <div key={t.id} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ color: "#bbb", fontSize: 11 }}>{t.nome}</span>
+                            <span style={{ color: barColor, fontSize: 11, fontWeight: 700 }}>{media}%</span>
+                          </div>
+                          <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,0.05)" }}>
+                            <div style={{ height: 8, borderRadius: 4, background: barColor, width: `${media}%`, transition: "width 0.5s" }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Evolução mensal */}
+                  <div style={{ background: "rgba(255,255,255,0.025)", borderRadius: 12, padding: "16px 18px", border: "1px solid rgba(200,169,110,0.08)", gridColumn: "1 / 3" }}>
+                    <p style={{ color: "#888", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 14px" }}>Evolução mensal — Alunos matriculados</p>
+                    {(() => {
+                      const NOMES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+                      const meses = {};
+                      alunos.forEach((a) => {
+                        const d = new Date(a.criado_em);
+                        const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;
+                        const label = `${NOMES[d.getMonth()]}/${d.getFullYear()}`;
+                        if (!meses[key]) meses[key] = { label, count: 0 };
+                        meses[key].count++;
+                      });
+                      const sorted = Object.entries(meses).sort((a,b) => a[0].localeCompare(b[0]));
+                      if (!sorted.length) return <p style={{ color: "#555", fontSize: 11 }}>Sem dados ainda.</p>;
+                      const maxVal = Math.max(...sorted.map(([,v]) => v.count), 1);
+                      return (
+                        <div style={{ display: "flex", alignItems: "flex-end", gap: 8, height: 120 }}>
+                          {sorted.map(([key, data]) => (
+                            <div key={key} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                              <span style={{ color: "#C8A96E", fontSize: 11, fontWeight: 700 }}>{data.count}</span>
+                              <div style={{
+                                width: "100%", maxWidth: 60, borderRadius: "6px 6px 0 0",
+                                background: "linear-gradient(180deg, #C8A96E, #8a7040)",
+                                height: `${(data.count / maxVal) * 80}px`,
+                                minHeight: 4, transition: "height 0.5s",
+                              }} />
+                              <span style={{ color: "#888", fontSize: 9, fontWeight: 600 }}>{data.label}</span>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Cursos mais populares */}
+                  <div style={{ background: "rgba(255,255,255,0.025)", borderRadius: 12, padding: "16px 18px", border: "1px solid rgba(200,169,110,0.08)", gridColumn: "1 / 3" }}>
+                    <p style={{ color: "#888", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, margin: "0 0 14px" }}>Cursos mais populares</p>
+                    {(() => {
+                      const cursos = {};
+                      turmas.forEach((t) => {
+                        if (!cursos[t.curso]) cursos[t.curso] = { turmas: 0, alunos: 0, certs: 0 };
+                        cursos[t.curso].turmas++;
+                        cursos[t.curso].alunos += alunos.filter((a) => a.turma_id === t.id).length;
+                        cursos[t.curso].certs += certificados.filter((c) => c.turma_id === t.id).length;
+                      });
+                      const sorted = Object.entries(cursos).sort((a,b) => b[1].alunos - a[1].alunos);
+                      const maxA = Math.max(...sorted.map(([,v]) => v.alunos), 1);
+                      const colors = ["#C8A96E", "#3498db", "#2ecc71", "#e74c3c", "#9b59b6", "#f39c12"];
+                      return sorted.map(([curso, data], i) => (
+                        <div key={curso} style={{ marginBottom: 10 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ color: "#bbb", fontSize: 11 }}>{curso}</span>
+                            <span style={{ color: "#888", fontSize: 10 }}>{data.turmas} turma(s) · <span style={{ color: colors[i % colors.length], fontWeight: 700 }}>{data.alunos} alunos</span></span>
+                          </div>
+                          <div style={{ height: 8, borderRadius: 4, background: "rgba(255,255,255,0.05)" }}>
+                            <div style={{ height: 8, borderRadius: 4, background: colors[i % colors.length], width: `${(data.alunos / maxA) * 100}%`, transition: "width 0.5s" }} />
+                          </div>
+                        </div>
+                      ));
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {turmasFinalizadas.length > 0 && (
               <div style={{ marginTop: 24 }}>
                 <h3 style={{ color: "#888", fontSize: 13, fontWeight: 700, marginBottom: 12 }}>📁 Histórico ({turmasFinalizadas.length})</h3>
