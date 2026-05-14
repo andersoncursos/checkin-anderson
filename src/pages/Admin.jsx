@@ -156,6 +156,21 @@ export default function Admin({ onLogout }) {
           }),
         }).catch(() => {});
       }
+
+      // Open WhatsApp with welcome message
+      const cel = cleanPhone(novoAluno.celular);
+      const celFormatado = cel.length === 11 ? `55${cel}` : cel.length === 10 ? `55${cel}` : cel;
+      const aulasT = aulasDaTurma(turma.id);
+      const dataIni = aulasT.length ? fmtDateFull(aulasT[0].data_aula) : "";
+      const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
+      const periodoWa = dataIni && dataFin ? `📅 Período: ${dataIni} a ${dataFin}` : "";
+      const horarioWa = turma.carga_horaria === "18"
+        ? "🕐 Horário: Sábado e Domingo, 9h às 12h e 14h30 às 18h"
+        : `🕐 Horário: ${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`;
+      const waMsg = `Olá, *${novoAluno.nome}*! 👋\n\nSeja bem-vindo(a) ao curso *${turma.curso}* — *${turma.nome}*!\n\n📚 *Informações do curso:*\n⏱ Carga horária: ${getCH(turma.carga_horaria)}h\n${periodoWa}\n${horarioWa}\n📍 Local: Anderson Cursos e Treinamentos\n\nNo dia da aula, você receberá um link aqui no WhatsApp para registrar sua presença. É rápido!\n\nQualquer dúvida, estou à disposição. Bom curso! 🚀\n\n_Prof. José Anderson_\n_Anderson Cursos e Treinamentos_`;
+      const waUrl = `https://wa.me/${celFormatado}?text=${encodeURIComponent(waMsg)}`;
+      window.open(waUrl, "_blank");
+
       setNovoAluno({ nome: "", celular: "", email: "", turma_id: "" });
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
