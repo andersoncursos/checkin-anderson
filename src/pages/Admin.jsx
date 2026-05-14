@@ -13,10 +13,11 @@ export default function Admin({ onLogout }) {
   const [alunos, setAlunos] = useState([]);
   const [checkins, setCheckins] = useState([]);
   const [certificados, setCertificados] = useState([]);
+  const [contratos, setContratos] = useState([]);
 
   const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30-noite", horario_inicio: "18:00", horario_fim: "21:00" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
-  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "" });
+  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
   const [turmaExpandida, setTurmaExpandida] = useState(null);
   const [certTurma, setCertTurma] = useState("");
@@ -32,14 +33,15 @@ export default function Admin({ onLogout }) {
   const carregarDados = useCallback(async () => {
     if (!connected) return;
     try {
-      const [t, au, a, c, cert] = await Promise.all([
+      const [t, au, a, c, cert, cont] = await Promise.all([
         query("turmas", { qs: "?select=*&order=criado_em.desc" }),
         query("aulas", { qs: "?select=*&order=data_aula.asc" }),
         query("alunos", { qs: "?select=*,turmas(nome,curso)&order=nome.asc" }),
         query("checkins", { qs: "?select=*,alunos(nome,celular),aulas(data_aula,descricao)&order=hora_checkin.desc" }),
         query("certificados", { qs: "?select=*&order=criado_em.desc" }),
+        query("contratos", { qs: "?select=*&order=criado_em.desc" }),
       ]);
-      setTurmas(t); setAulas(au); setAlunos(a); setCheckins(c); setCertificados(cert);
+      setTurmas(t); setAulas(au); setAlunos(a); setCheckins(c); setCertificados(cert); setContratos(cont);
     } catch (err) { console.error(err); }
   }, [connected]);
 
@@ -171,7 +173,40 @@ export default function Admin({ onLogout }) {
       const waUrl = `https://wa.me/${celFormatado}?text=${encodeURIComponent(waMsg)}`;
       window.open(waUrl, "_blank");
 
-      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "" });
+      // Create contract via Autentique if CPF provided
+      if (novoAluno.cpf && novoAluno.email && novoAluno.pag_valor) {
+        try {
+          const contRes = await fetch("/api/criar-contrato", {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              aluno: { nome: novoAluno.nome, cpf: novoAluno.cpf, email: novoAluno.email, endereco: novoAluno.endereco, bairro: novoAluno.bairro, cidade: novoAluno.cidade, estado: novoAluno.estado },
+              turma: {
+                curso: turma.curso, nome: turma.nome,
+                carga_horaria: getCH(turma.carga_horaria),
+                periodo: periodo,
+                horario: turma.carga_horaria === "18" ? "9h às 12h e 14h30 às 18h" : `${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`,
+              },
+              pagamento: novoAluno.pag_forma === "pix"
+                ? { forma: "pix", valor: novoAluno.pag_valor }
+                : { forma: "cartao", valor_total: novoAluno.pag_valor, parcelas: novoAluno.pag_parcelas, valor_parcela: novoAluno.pag_valor_parcela },
+            }),
+          });
+          const contData = await contRes.json();
+          if (contData.ok) {
+            // Save contract to Supabase
+            const alunosCriados = await query("alunos", { qs: `?celular=eq.${cel}&turma_id=eq.${turma.id}&select=id` });
+            if (alunosCriados[0]) {
+              await query("contratos", { method: "POST", body: {
+                aluno_id: alunosCriados[0].id, turma_id: turma.id,
+                autentique_id: contData.autentique_id, status: "pendente",
+                link_assinatura: contData.link_assinatura,
+              }});
+            }
+          }
+        } catch { /* contract failed silently */ }
+      }
+
+      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
   };
@@ -981,16 +1016,44 @@ export default function Admin({ onLogout }) {
         {tab === "alunos" && (
           <div>
             <h2 style={{ color: "#F1EFE8", fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Cadastrar Aluno</h2>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14, marginBottom: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14, marginBottom: 12 }}>
               <div><label style={lbl}>Nome Completo</label><input placeholder="Maria Silva" style={inp} value={novoAluno.nome} onChange={(e) => setNovoAluno({ ...novoAluno, nome: e.target.value })} /></div>
+              <div><label style={lbl}>CPF</label><input placeholder="000.000.000-00" style={inp} value={novoAluno.cpf} onChange={(e) => {
+                let v = e.target.value.replace(/\D/g, "").slice(0, 11);
+                if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4");
+                else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3");
+                else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2");
+                setNovoAluno({ ...novoAluno, cpf: v });
+              }} /></div>
               <div><label style={lbl}>Celular (WhatsApp)</label><input placeholder="(83) 99999-9999" type="tel" style={inp} value={novoAluno.celular} onChange={(e) => setNovoAluno({ ...novoAluno, celular: formatPhone(e.target.value) })} /></div>
               <div><label style={lbl}>E-mail</label><input placeholder="aluno@email.com" type="email" style={inp} value={novoAluno.email} onChange={(e) => setNovoAluno({ ...novoAluno, email: e.target.value })} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 14, marginBottom: 12 }}>
+              <div><label style={lbl}>Endereço (Rua, nº, complemento)</label><input placeholder="Rua João Pessoa, 123 - Apt 201" style={inp} value={novoAluno.endereco} onChange={(e) => setNovoAluno({ ...novoAluno, endereco: e.target.value })} /></div>
+              <div><label style={lbl}>Bairro</label><input placeholder="Centro" style={inp} value={novoAluno.bairro} onChange={(e) => setNovoAluno({ ...novoAluno, bairro: e.target.value })} /></div>
+              <div><label style={lbl}>Cidade</label><input style={inp} value={novoAluno.cidade} onChange={(e) => setNovoAluno({ ...novoAluno, cidade: e.target.value })} /></div>
+              <div><label style={lbl}>Estado</label><input style={inp} value={novoAluno.estado} onChange={(e) => setNovoAluno({ ...novoAluno, estado: e.target.value })} maxLength={2} /></div>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
               <div><label style={lbl}>Turma</label>
                 <select style={{ ...inp, appearance: "auto" }} value={novoAluno.turma_id} onChange={(e) => setNovoAluno({ ...novoAluno, turma_id: e.target.value })}>
                   <option value="">Selecione...</option>
-                  {turmas.map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso}</option>)}
+                  {turmas.filter((t) => !t.finalizada).map((t) => <option key={t.id} value={t.id}>{t.nome} — {t.curso}</option>)}
                 </select>
               </div>
+              <div><label style={lbl}>Pagamento</label>
+                <select style={{ ...inp, appearance: "auto" }} value={novoAluno.pag_forma} onChange={(e) => setNovoAluno({ ...novoAluno, pag_forma: e.target.value })}>
+                  <option value="pix">PIX (à vista)</option>
+                  <option value="cartao">Cartão (parcelado)</option>
+                </select>
+              </div>
+              <div><label style={lbl}>{novoAluno.pag_forma === "pix" ? "Valor (PIX)" : "Valor Total"}</label><input placeholder="R$ 497,00" style={inp} value={novoAluno.pag_valor} onChange={(e) => setNovoAluno({ ...novoAluno, pag_valor: e.target.value })} /></div>
+              {novoAluno.pag_forma === "cartao" && (
+                <>
+                  <div><label style={lbl}>Parcelas</label><input placeholder="3" type="number" style={inp} value={novoAluno.pag_parcelas} onChange={(e) => setNovoAluno({ ...novoAluno, pag_parcelas: e.target.value })} /></div>
+                  <div><label style={lbl}>Valor Parcela</label><input placeholder="R$ 165,67" style={inp} value={novoAluno.pag_valor_parcela} onChange={(e) => setNovoAluno({ ...novoAluno, pag_valor_parcela: e.target.value })} /></div>
+                </>
+              )}
             </div>
             <button style={btnP} onClick={criarAluno}>+ CADASTRAR ALUNO</button>
 
@@ -1011,13 +1074,14 @@ export default function Admin({ onLogout }) {
                       <div style={{ overflowX: "auto", border: "1px solid rgba(200,169,110,0.1)", borderRadius: "0 0 10px 10px" }}>
                         <table style={{ width: "100%", borderCollapse: "collapse" }}>
                           <thead>
-                            <tr>{["Nome", "Celular", "E-mail", ""].map((h) => (
+                            <tr>{["Nome", "Celular", "E-mail", "Contrato", ""].map((h) => (
                               <th key={h || "acoes"} style={{ textAlign: "left", padding: "8px 16px", color: "#666", fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: 1, borderBottom: "1px solid rgba(255,255,255,0.05)" }}>{h}</th>
                             ))}</tr>
                           </thead>
                           <tbody>
                             {alunosT.map((a) => {
                               const isEdit = editando?.id === a.id;
+                              const contrato = contratos.find((c) => c.aluno_id === a.id);
                               return (
                               <tr key={a.id}>
                                 <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
@@ -1028,6 +1092,13 @@ export default function Admin({ onLogout }) {
                                 </td>
                                 <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                                   {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.email} onChange={(e) => setEditando({ ...editando, email: e.target.value })} placeholder="email@..." /> : <span style={{ color: "#888", fontSize: 12 }}>{a.email || "—"}</span>}
+                                </td>
+                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                  {contrato ? (
+                                    contrato.status === "assinado"
+                                      ? <span style={{ color: "#2ecc71", fontSize: 11, fontWeight: 700 }}>🟢 Assinado</span>
+                                      : <a href={contrato.link_assinatura || "#"} target="_blank" rel="noopener" style={{ color: "#f39c12", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>🟡 Pendente</a>
+                                  ) : <span style={{ color: "#555", fontSize: 11 }}>—</span>}
                                 </td>
                                 <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}>
                                   {isEdit ? (
