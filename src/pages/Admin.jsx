@@ -17,7 +17,7 @@ export default function Admin({ onLogout }) {
 
   const [novaTurma, setNovaTurma] = useState({ nome: "", curso: "", carga_horaria: "30-noite", horario_inicio: "18:00", horario_fim: "21:00" });
   const [datasAulas, setDatasAulas] = useState([{ data: "", descricao: "" }]);
-  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
+  const [novoAluno, setNovoAluno] = useState({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", cep: "", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
   const [filtroTurma, setFiltroTurma] = useState("");
   const [turmaExpandida, setTurmaExpandida] = useState(null);
   const [certTurma, setCertTurma] = useState("");
@@ -206,7 +206,7 @@ export default function Admin({ onLogout }) {
         } catch { /* contract failed silently */ }
       }
 
-      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
+      setNovoAluno({ nome: "", celular: "", email: "", turma_id: "", cpf: "", endereco: "", bairro: "", cidade: "João Pessoa", estado: "PB", cep: "", pag_forma: "pix", pag_valor: "", pag_parcelas: "", pag_valor_parcela: "" });
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
   };
@@ -220,19 +220,45 @@ export default function Admin({ onLogout }) {
       if (editando.bairro) body.bairro = editando.bairro;
       if (editando.cidade) body.cidade = editando.cidade;
       if (editando.estado) body.estado = editando.estado;
+      if (editando.cep) body.cep = editando.cep;
       await query("alunos", { method: "PATCH", qs: `?id=eq.${editando.id}`, body });
       setEditando(null);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
   };
 
-  // --- Enviar contrato manual ---
-  const enviarContratoManual = async (aluno) => {
-    if (!aluno.cpf || !aluno.email) { alert("Preencha o CPF e e-mail do aluno antes de enviar o contrato. Clique em Editar."); return; }
+  // --- Gerar HTML do contrato (para preview e envio) ---
+  const gerarContratoHTML = (aluno, turma, pagamento) => {
+    const hoje = new Date();
+    const MESES = ["janeiro","fevereiro","março","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"];
+    const dataContrato = `João Pessoa, ${hoje.getDate()} de ${MESES[hoje.getMonth()]} de ${hoje.getFullYear()}.`;
+    const aulasT = aulasDaTurma(turma.id);
+    const dataIni = aulasT.length ? fmtDateFull(aulasT[0].data_aula) : "";
+    const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
+    const periodo = dataIni && dataFin ? `${dataIni} a ${dataFin}` : "";
+    const horario = turma.carga_horaria === "18" ? "9h às 12h e 14h30 às 18h" : `${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`;
+
+    let clausulaPag = "";
+    if (pagamento.forma === "pix") {
+      clausulaPag = `2.1. O valor total do curso é de R$ ${pagamento.valor}, tendo o pagamento sido efetuado à vista via PIX.`;
+    } else {
+      clausulaPag = `2.1. O valor total do curso é de R$ ${pagamento.valor_total}, tendo o pagamento sido efetuado através de cartão de crédito em ${pagamento.parcelas}x de R$ ${pagamento.valor_parcela}.`;
+    }
+
+    const enderecoCompleto = [aluno.endereco, aluno.bairro, aluno.cidade ? `${aluno.cidade}/${aluno.estado}` : "", aluno.cep ? `CEP: ${aluno.cep}` : ""].filter(Boolean).join(" - ");
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:'Times New Roman',serif;font-size:12pt;line-height:1.8;color:#222;max-width:700px;margin:40px auto;padding:20px}h1{text-align:center;font-size:14pt;font-weight:bold;margin-bottom:30px}.clausula{font-weight:bold;margin-top:20px}.assinatura{margin-top:50px;display:flex;justify-content:space-between}.assinatura-bloco{width:45%;text-align:center}.linha{border-top:1px solid #222;margin-top:60px;padding-top:5px}</style></head><body><h1>CONTRATO DE PRESTAÇÃO DE SERVIÇOS EDUCACIONAIS</h1><p>Pelo presente instrumento particular, de um lado, <strong>ANDERSON CURSOS E TREINAMENTOS LTDA</strong>, inscrita no CNPJ sob o nº 24.335.154/0001-00, com sede na Av. Presidente Epitácio Pessoa, 753 - Sala 305 - Empresarial Central Park - Bairro dos Estados - João Pessoa/PB, doravante denominada CONTRATADA, e de outro lado, <strong>${aluno.nome}</strong>, inscrito(a) no CPF/CNPJ sob o nº <strong>${aluno.cpf}</strong>, residente e domiciliado(a) em ${enderecoCompleto}, doravante denominado(a) CONTRATANTE, firmam o presente Contrato de Prestação de Serviços Educacionais, conforme as cláusulas e condições abaixo descritas:</p><p class="clausula">CLÁUSULA 1 - DO OBJETO</p><p>1.1. O presente contrato tem como objeto a prestação de serviços educacionais pela CONTRATADA ao CONTRATANTE, consistentes na oferta do curso presencial de <strong>${turma.curso}</strong>, conforme conteúdo programático previamente disponibilizado, com carga horária de <strong>${getCH(turma.carga_horaria)}h</strong>.</p><p>1.2. O curso será realizado nas dependências da CONTRATADA, localizada na Av. Presidente Epitácio Pessoa, 753 - Sala 305 - Empresarial Central Park - Bairro dos Estados - João Pessoa/PB, no período de ${periodo}, das ${horario}.</p><p class="clausula">CLÁUSULA 2 - DO VALOR E FORMA DE PAGAMENTO</p><p>${clausulaPag}</p><p>2.2. O pagamento foi efetuado por meio de ${pagamento.forma === "pix" ? "PIX" : "cartão de crédito"}.</p><p class="clausula">CLÁUSULA 3 - DA PROIBIÇÃO DE TROCA DE HORÁRIO OU TURMA</p><p>3.1. O CONTRATANTE está ciente de que não será permitido trocar o horário ou a turma inicialmente designada no momento da matrícula.</p><p>3.2. A vaga do CONTRATANTE é pessoal e intransferível, não podendo ser repassada para terceiros sob nenhuma hipótese.</p><p class="clausula">CLÁUSULA 4 - DA DESISTÊNCIA E MULTA</p><p>4.1. Em caso de desistência, o CONTRATANTE deverá comunicar a CONTRATADA por escrito com antecedência mínima de 7 dias antes do início do curso.</p><p>4.2. Caso a desistência ocorra com prazo inferior a 7 dias antes do início do curso, será aplicada uma multa de 20% do valor total do curso, a título de compensação pela quebra de contrato.</p><p>4.3. Caso a desistência ocorra após o início do curso, será aplicada uma multa de 10% do valor total do curso, a título de compensação pela quebra de contrato.</p><p class="clausula">CLÁUSULA 5 - DA RESPONSABILIDADE E OBRIGAÇÕES</p><p>5.1. A CONTRATADA se compromete a ministrar o curso de acordo com o conteúdo programático anunciado e dentro do período previamente informado.</p><p>5.2. O CONTRATANTE se compromete a frequentar as aulas no horário estipulado, respeitar as normas internas da CONTRATADA e zelar pelo bom andamento das atividades. Lembrando que não há reposição de aulas por faltas nas aulas.</p><p class="clausula">CLÁUSULA 6 – PROIBIÇÃO DE GRAVAÇÃO E DIVULGAÇÃO DE CONTEÚDO</p><p>Em conformidade com o disposto nos artigos 186 e 927 do Código Civil Brasileiro, que regulam a responsabilidade civil por atos ilícitos, fica expressamente vedado aos alunos, sob qualquer pretexto, realizar gravações, fotografias ou filmagens das aulas ministradas, bem como divulgar ou compartilhar, por qualquer meio, o conteúdo exposto em sala de aula, sem prévia autorização escrita da instituição de ensino e do respectivo professor.</p><p>A infração a esta cláusula sujeitará o aluno às penalidades previstas em contrato, podendo ensejar a sua responsabilização civil pelos danos morais e materiais causados à instituição de ensino, ao corpo docente e a terceiros envolvidos, sem prejuízo das sanções acadêmicas cabíveis.</p><p class="clausula">CLÁUSULA 7 - DAS CONDIÇÕES GERAIS</p><p>7.1. O presente contrato tem validade a partir da assinatura pelas partes e se encerra após a conclusão do curso, conforme descrito na Cláusula 1.</p><p>7.2. As partes elegem o foro da Comarca de João Pessoa para dirimir quaisquer questões oriundas deste contrato, com renúncia expressa de qualquer outro, por mais privilegiado que seja.</p><p>Por estarem de acordo com as cláusulas acima, as partes assinam o presente contrato em duas vias de igual teor e forma, na presença de testemunhas.</p><p>${dataContrato}</p><div class="assinatura"><div class="assinatura-bloco"><div class="linha"><strong>ANDERSON CURSOS E TREINAMENTOS LTDA</strong><br>24.335.154/0001-00</div></div><div class="assinatura-bloco"><div class="linha"><strong>${aluno.nome}</strong><br>${aluno.cpf}</div></div></div></body></html>`;
+  };
+
+  // --- Preview contrato ---
+  const [previewContrato, setPreviewContrato] = useState(null);
+
+  const verContrato = (aluno) => {
+    if (!aluno.cpf) { alert("Preencha o CPF/CNPJ do aluno primeiro (clique em Editar)."); return; }
     const turma = turmas.find((t) => t.id === aluno.turma_id);
     if (!turma) return;
 
-    const forma = prompt("Forma de pagamento:\n1 = PIX (à vista)\n2 = Cartão (parcelado)\n\nDigite 1 ou 2:");
+    const forma = prompt("Forma de pagamento para o contrato:\n1 = PIX (à vista)\n2 = Cartão (parcelado)\n\nDigite 1 ou 2:");
     if (!forma) return;
 
     let pagamento;
@@ -245,28 +271,31 @@ export default function Admin({ onLogout }) {
       if (!valorTotal) return;
       const parcelas = prompt("Em quantas parcelas? (ex: 3):");
       if (!parcelas) return;
-      const valorParcela = prompt(`Valor de cada parcela (ex: ${(parseFloat(valorTotal.replace(",",".")) / parseInt(parcelas)).toFixed(2).replace(".",",")}):`);
+      const valorParcela = prompt("Valor de cada parcela:");
       if (!valorParcela) return;
       pagamento = { forma: "cartao", valor_total: valorTotal, parcelas, valor_parcela: valorParcela };
     }
 
+    const html = gerarContratoHTML(aluno, turma, pagamento);
+    setPreviewContrato({ html, aluno, turma, pagamento });
+  };
+
+  // --- Enviar contrato manual ---
+  const enviarContratoManual = async (aluno, turma, pagamento) => {
     const aulasT = aulasDaTurma(turma.id);
     const dataIni = aulasT.length ? fmtDateFull(aulasT[0].data_aula) : "";
     const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
     const periodo = dataIni && dataFin ? `${dataIni} a ${dataFin}` : "";
+    const horario = turma.carga_horaria === "18" ? "9h às 12h e 14h30 às 18h" : `${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`;
+    const enderecoCompleto = [aluno.endereco, aluno.bairro, aluno.cidade ? `${aluno.cidade}/${aluno.estado}` : "", aluno.cep ? `CEP: ${aluno.cep}` : ""].filter(Boolean).join(" - ");
 
     setGerando(true);
     try {
       const res = await fetch("/api/criar-contrato", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          aluno: { nome: aluno.nome, cpf: aluno.cpf, email: aluno.email, endereco: aluno.endereco || "", bairro: aluno.bairro || "", cidade: aluno.cidade || "João Pessoa", estado: aluno.estado || "PB" },
-          turma: {
-            curso: turma.curso, nome: turma.nome,
-            carga_horaria: getCH(turma.carga_horaria),
-            periodo,
-            horario: turma.carga_horaria === "18" ? "9h às 12h e 14h30 às 18h" : `${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`,
-          },
+          aluno: { nome: aluno.nome, cpf: aluno.cpf, email: aluno.email, endereco: enderecoCompleto, bairro: "", cidade: "", estado: "" },
+          turma: { curso: turma.curso, nome: turma.nome, carga_horaria: getCH(turma.carga_horaria), periodo, horario },
           pagamento,
         }),
       });
@@ -278,9 +307,10 @@ export default function Admin({ onLogout }) {
           link_assinatura: data.link_assinatura,
         }});
         carregarDados();
+        setPreviewContrato(null);
         alert("Contrato enviado para assinatura! ✅\nO aluno receberá o link por e-mail.");
       } else {
-        alert("Erro ao criar contrato: " + (data.error || "tente novamente"));
+        alert("Erro: " + (data.error || "tente novamente"));
       }
     } catch (err) { alert("Erro: " + err.message); }
     setGerando(false);
@@ -1077,24 +1107,48 @@ export default function Admin({ onLogout }) {
         {/* ========== ALUNOS ========== */}
         {tab === "alunos" && (
           <div>
+            {/* Contract Preview Modal */}
+            {previewContrato && (
+              <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => setPreviewContrato(null)}>
+                <div style={{ maxWidth: 900, width: "100%", maxHeight: "90vh", background: "#fff", borderRadius: 12, overflow: "hidden", display: "flex", flexDirection: "column" }} onClick={(e) => e.stopPropagation()}>
+                  <div style={{ padding: "14px 20px", background: "#1A1A18", borderBottom: "1px solid rgba(200,169,110,0.2)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ color: "#C8A96E", fontSize: 13, fontWeight: 700 }}>Preview do Contrato — {previewContrato.aluno.nome}</span>
+                    <button onClick={() => setPreviewContrato(null)} style={{ background: "none", border: "none", color: "#888", fontSize: 18, cursor: "pointer" }}>✕</button>
+                  </div>
+                  <div style={{ flex: 1, overflow: "auto" }}>
+                    <iframe srcDoc={previewContrato.html} style={{ width: "100%", height: 500, border: "none" }} />
+                  </div>
+                  <div style={{ padding: "12px 20px", background: "#1A1A18", borderTop: "1px solid rgba(200,169,110,0.2)", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                    <button onClick={() => setPreviewContrato(null)} style={{ padding: "8px 18px", fontSize: 12, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "transparent", color: "#888", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, cursor: "pointer" }}>Fechar</button>
+                    <button onClick={() => enviarContratoManual(previewContrato.aluno, previewContrato.turma, previewContrato.pagamento)} disabled={gerando} style={{ padding: "8px 18px", fontSize: 12, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "linear-gradient(135deg, #C8A96E, #b8954e)", color: "#1A1A18", border: "none", borderRadius: 8, cursor: "pointer", opacity: gerando ? 0.6 : 1 }}>
+                      {gerando ? "⏳ Enviando..." : "📄 Enviar para Assinatura"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
             <h2 style={{ color: "#F1EFE8", fontSize: 15, fontWeight: 700, marginBottom: 18 }}>Cadastrar Aluno</h2>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 14, marginBottom: 12 }}>
               <div><label style={lbl}>Nome Completo</label><input placeholder="Maria Silva" style={inp} value={novoAluno.nome} onChange={(e) => setNovoAluno({ ...novoAluno, nome: e.target.value })} /></div>
-              <div><label style={lbl}>CPF</label><input placeholder="000.000.000-00" style={inp} value={novoAluno.cpf} onChange={(e) => {
-                let v = e.target.value.replace(/\D/g, "").slice(0, 11);
-                if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4");
-                else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3");
-                else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2");
+              <div><label style={lbl}>CPF/CNPJ</label><input placeholder="000.000.000-00" style={inp} value={novoAluno.cpf} onChange={(e) => {
+                let v = e.target.value.replace(/\D/g, "");
+                if (v.length <= 11) { if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4"); else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3"); else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2"); }
+                else { v = v.slice(0,14); v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/, "$1.$2.$3/$4-$5"); }
                 setNovoAluno({ ...novoAluno, cpf: v });
               }} /></div>
               <div><label style={lbl}>Celular (WhatsApp)</label><input placeholder="(83) 99999-9999" type="tel" style={inp} value={novoAluno.celular} onChange={(e) => setNovoAluno({ ...novoAluno, celular: formatPhone(e.target.value) })} /></div>
               <div><label style={lbl}>E-mail</label><input placeholder="aluno@email.com" type="email" style={inp} value={novoAluno.email} onChange={(e) => setNovoAluno({ ...novoAluno, email: e.target.value })} /></div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr", gap: 14, marginBottom: 12 }}>
-              <div><label style={lbl}>Endereço (Rua, nº, complemento)</label><input placeholder="Rua João Pessoa, 123 - Apt 201" style={inp} value={novoAluno.endereco} onChange={(e) => setNovoAluno({ ...novoAluno, endereco: e.target.value })} /></div>
-              <div><label style={lbl}>Bairro</label><input placeholder="Centro" style={inp} value={novoAluno.bairro} onChange={(e) => setNovoAluno({ ...novoAluno, bairro: e.target.value })} /></div>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr 1fr 1fr 0.7fr", gap: 14, marginBottom: 12 }}>
+              <div><label style={lbl}>Endereço (Rua e nº)</label><input placeholder="Rua Paulino de Albuquerque, 167" style={inp} value={novoAluno.endereco} onChange={(e) => setNovoAluno({ ...novoAluno, endereco: e.target.value })} /></div>
+              <div><label style={lbl}>Bairro</label><input placeholder="Jaguaribe" style={inp} value={novoAluno.bairro} onChange={(e) => setNovoAluno({ ...novoAluno, bairro: e.target.value })} /></div>
               <div><label style={lbl}>Cidade</label><input style={inp} value={novoAluno.cidade} onChange={(e) => setNovoAluno({ ...novoAluno, cidade: e.target.value })} /></div>
-              <div><label style={lbl}>Estado</label><input style={inp} value={novoAluno.estado} onChange={(e) => setNovoAluno({ ...novoAluno, estado: e.target.value })} maxLength={2} /></div>
+              <div><label style={lbl}>CEP</label><input placeholder="58000-000" style={inp} value={novoAluno.cep} onChange={(e) => {
+                let v = e.target.value.replace(/\D/g, "").slice(0, 8);
+                if (v.length > 5) v = v.replace(/(\d{5})(\d{1,3})/, "$1-$2");
+                setNovoAluno({ ...novoAluno, cep: v });
+              }} /></div>
+              <div><label style={lbl}>UF</label><input style={inp} value={novoAluno.estado} onChange={(e) => setNovoAluno({ ...novoAluno, estado: e.target.value })} maxLength={2} /></div>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr", gap: 14, marginBottom: 16 }}>
               <div><label style={lbl}>Turma</label>
@@ -1171,8 +1225,8 @@ export default function Admin({ onLogout }) {
                                     </div>
                                   ) : (
                                     <div style={{ display: "flex", gap: 6 }}>
-                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "", cpf: a.cpf || "", endereco: a.endereco || "", bairro: a.bairro || "", cidade: a.cidade || "João Pessoa", estado: a.estado || "PB" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
-                                      {!contrato && <button onClick={() => enviarContratoManual(a)} disabled={gerando} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(52,152,219,0.08)", color: "#3498db", border: "1px solid rgba(52,152,219,0.15)", borderRadius: 6, cursor: "pointer" }}>📄 Contrato</button>}
+                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "", cpf: a.cpf || "", endereco: a.endereco || "", bairro: a.bairro || "", cidade: a.cidade || "João Pessoa", estado: a.estado || "PB", cep: a.cep || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                                      {!contrato && <button onClick={() => verContrato(a)} disabled={gerando} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(52,152,219,0.08)", color: "#3498db", border: "1px solid rgba(52,152,219,0.15)", borderRadius: 6, cursor: "pointer" }}>👁 Ver Contrato</button>}
                                       <button onClick={() => excluirAluno(a.id)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, cursor: "pointer" }}>🗑</button>
                                     </div>
                                   )}
@@ -1181,17 +1235,21 @@ export default function Admin({ onLogout }) {
                               {isEdit && (
                                 <tr>
                                   <td colSpan={5} style={{ padding: "6px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.03)", background: "rgba(200,169,110,0.03)" }}>
-                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 0.5fr", gap: 8 }}>
-                                      <div><label style={{ ...lbl, fontSize: 9 }}>CPF</label><input placeholder="000.000.000-00" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cpf} onChange={(e) => {
-                                        let v = e.target.value.replace(/\D/g, "").slice(0, 11);
-                                        if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4");
-                                        else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3");
-                                        else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2");
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 0.7fr 0.5fr", gap: 8 }}>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>CPF/CNPJ</label><input placeholder="000.000.000-00" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cpf} onChange={(e) => {
+                                        let v = e.target.value.replace(/\D/g, "");
+                                        if (v.length <= 11) { if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4"); else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3"); else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2"); }
+                                        else { v = v.slice(0,14); v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{1,2})/, "$1.$2.$3/$4-$5"); }
                                         setEditando({ ...editando, cpf: v });
                                       }} /></div>
-                                      <div><label style={{ ...lbl, fontSize: 9 }}>Endereço</label><input placeholder="Rua, nº, complemento" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.endereco} onChange={(e) => setEditando({ ...editando, endereco: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>Endereço</label><input placeholder="Rua, nº" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.endereco} onChange={(e) => setEditando({ ...editando, endereco: e.target.value })} /></div>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>Bairro</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.bairro} onChange={(e) => setEditando({ ...editando, bairro: e.target.value })} /></div>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>Cidade</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cidade} onChange={(e) => setEditando({ ...editando, cidade: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>CEP</label><input placeholder="58000-000" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cep} onChange={(e) => {
+                                        let v = e.target.value.replace(/\D/g, "").slice(0, 8);
+                                        if (v.length > 5) v = v.replace(/(\d{5})(\d{1,3})/, "$1-$2");
+                                        setEditando({ ...editando, cep: v });
+                                      }} /></div>
                                       <div><label style={{ ...lbl, fontSize: 9 }}>UF</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.estado} onChange={(e) => setEditando({ ...editando, estado: e.target.value })} maxLength={2} /></div>
                                     </div>
                                   </td>
