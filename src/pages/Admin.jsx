@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { query, isConnected } from "../supabase";
 import { SQL_SETUP } from "../sql";
@@ -214,14 +214,76 @@ export default function Admin({ onLogout }) {
   const salvarEdicao = async () => {
     if (!editando) return;
     try {
-      await query("alunos", {
-        method: "PATCH",
-        qs: `?id=eq.${editando.id}`,
-        body: { nome: editando.nome, celular: cleanPhone(editando.celular), email: editando.email },
-      });
+      const body = { nome: editando.nome, celular: cleanPhone(editando.celular), email: editando.email };
+      if (editando.cpf) body.cpf = editando.cpf;
+      if (editando.endereco) body.endereco = editando.endereco;
+      if (editando.bairro) body.bairro = editando.bairro;
+      if (editando.cidade) body.cidade = editando.cidade;
+      if (editando.estado) body.estado = editando.estado;
+      await query("alunos", { method: "PATCH", qs: `?id=eq.${editando.id}`, body });
       setEditando(null);
       carregarDados();
     } catch (err) { alert("Erro: " + err.message); }
+  };
+
+  // --- Enviar contrato manual ---
+  const enviarContratoManual = async (aluno) => {
+    if (!aluno.cpf || !aluno.email) { alert("Preencha o CPF e e-mail do aluno antes de enviar o contrato. Clique em Editar."); return; }
+    const turma = turmas.find((t) => t.id === aluno.turma_id);
+    if (!turma) return;
+
+    const forma = prompt("Forma de pagamento:\n1 = PIX (à vista)\n2 = Cartão (parcelado)\n\nDigite 1 ou 2:");
+    if (!forma) return;
+
+    let pagamento;
+    if (forma === "1") {
+      const valor = prompt("Valor pago via PIX (ex: 497,00):");
+      if (!valor) return;
+      pagamento = { forma: "pix", valor };
+    } else {
+      const valorTotal = prompt("Valor total no cartão (ex: 597,00):");
+      if (!valorTotal) return;
+      const parcelas = prompt("Em quantas parcelas? (ex: 3):");
+      if (!parcelas) return;
+      const valorParcela = prompt(`Valor de cada parcela (ex: ${(parseFloat(valorTotal.replace(",",".")) / parseInt(parcelas)).toFixed(2).replace(".",",")}):`);
+      if (!valorParcela) return;
+      pagamento = { forma: "cartao", valor_total: valorTotal, parcelas, valor_parcela: valorParcela };
+    }
+
+    const aulasT = aulasDaTurma(turma.id);
+    const dataIni = aulasT.length ? fmtDateFull(aulasT[0].data_aula) : "";
+    const dataFin = aulasT.length ? fmtDateFull(aulasT[aulasT.length - 1].data_aula) : "";
+    const periodo = dataIni && dataFin ? `${dataIni} a ${dataFin}` : "";
+
+    setGerando(true);
+    try {
+      const res = await fetch("/api/criar-contrato", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          aluno: { nome: aluno.nome, cpf: aluno.cpf, email: aluno.email, endereco: aluno.endereco || "", bairro: aluno.bairro || "", cidade: aluno.cidade || "João Pessoa", estado: aluno.estado || "PB" },
+          turma: {
+            curso: turma.curso, nome: turma.nome,
+            carga_horaria: getCH(turma.carga_horaria),
+            periodo,
+            horario: turma.carga_horaria === "18" ? "9h às 12h e 14h30 às 18h" : `${turma.horario_inicio || "18:00"} às ${turma.horario_fim || "21:00"}`,
+          },
+          pagamento,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await query("contratos", { method: "POST", body: {
+          aluno_id: aluno.id, turma_id: turma.id,
+          autentique_id: data.autentique_id, status: "pendente",
+          link_assinatura: data.link_assinatura,
+        }});
+        carregarDados();
+        alert("Contrato enviado para assinatura! ✅\nO aluno receberá o link por e-mail.");
+      } else {
+        alert("Erro ao criar contrato: " + (data.error || "tente novamente"));
+      }
+    } catch (err) { alert("Erro: " + err.message); }
+    setGerando(false);
   };
 
   // --- Excluir ---
@@ -1083,24 +1145,25 @@ export default function Admin({ onLogout }) {
                               const isEdit = editando?.id === a.id;
                               const contrato = contratos.find((c) => c.aluno_id === a.id);
                               return (
-                              <tr key={a.id}>
-                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                              <React.Fragment key={a.id}>
+                              <tr>
+                                <td style={{ padding: "8px 16px", borderBottom: isEdit ? "none" : "1px solid rgba(255,255,255,0.03)" }}>
                                   {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.nome} onChange={(e) => setEditando({ ...editando, nome: e.target.value })} /> : <span style={{ color: "#F1EFE8", fontSize: 13, fontWeight: 600 }}>{a.nome}</span>}
                                 </td>
-                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                <td style={{ padding: "8px 16px", borderBottom: isEdit ? "none" : "1px solid rgba(255,255,255,0.03)" }}>
                                   {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12, width: 150 }} value={editando.celular} onChange={(e) => setEditando({ ...editando, celular: formatPhone(e.target.value) })} /> : <span style={{ color: "#888", fontSize: 12, fontVariantNumeric: "tabular-nums" }}>{formatPhone(a.celular)}</span>}
                                 </td>
-                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                <td style={{ padding: "8px 16px", borderBottom: isEdit ? "none" : "1px solid rgba(255,255,255,0.03)" }}>
                                   {isEdit ? <input style={{ ...inp, padding: "8px 10px", fontSize: 12 }} value={editando.email} onChange={(e) => setEditando({ ...editando, email: e.target.value })} placeholder="email@..." /> : <span style={{ color: "#888", fontSize: 12 }}>{a.email || "—"}</span>}
                                 </td>
-                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
+                                <td style={{ padding: "8px 16px", borderBottom: isEdit ? "none" : "1px solid rgba(255,255,255,0.03)" }}>
                                   {contrato ? (
                                     contrato.status === "assinado"
                                       ? <span style={{ color: "#2ecc71", fontSize: 11, fontWeight: 700 }}>🟢 Assinado</span>
                                       : <a href={contrato.link_assinatura || "#"} target="_blank" rel="noopener" style={{ color: "#f39c12", fontSize: 11, fontWeight: 700, textDecoration: "none" }}>🟡 Pendente</a>
                                   ) : <span style={{ color: "#555", fontSize: 11 }}>—</span>}
                                 </td>
-                                <td style={{ padding: "8px 16px", borderBottom: "1px solid rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}>
+                                <td style={{ padding: "8px 16px", borderBottom: isEdit ? "none" : "1px solid rgba(255,255,255,0.03)", whiteSpace: "nowrap" }}>
                                   {isEdit ? (
                                     <div style={{ display: "flex", gap: 6 }}>
                                       <button onClick={salvarEdicao} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 700, background: "rgba(39,174,96,0.15)", color: "#2ecc71", border: "1px solid rgba(39,174,96,0.3)", borderRadius: 6, cursor: "pointer" }}>✓ Salvar</button>
@@ -1108,12 +1171,33 @@ export default function Admin({ onLogout }) {
                                     </div>
                                   ) : (
                                     <div style={{ display: "flex", gap: 6 }}>
-                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                                      <button onClick={() => setEditando({ id: a.id, nome: a.nome, celular: formatPhone(a.celular), email: a.email || "", cpf: a.cpf || "", endereco: a.endereco || "", bairro: a.bairro || "", cidade: a.cidade || "João Pessoa", estado: a.estado || "PB" })} style={{ padding: "5px 12px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(200,169,110,0.08)", color: "#C8A96E", border: "1px solid rgba(200,169,110,0.15)", borderRadius: 6, cursor: "pointer" }}>✏️ Editar</button>
+                                      {!contrato && <button onClick={() => enviarContratoManual(a)} disabled={gerando} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(52,152,219,0.08)", color: "#3498db", border: "1px solid rgba(52,152,219,0.15)", borderRadius: 6, cursor: "pointer" }}>📄 Contrato</button>}
                                       <button onClick={() => excluirAluno(a.id)} style={{ padding: "5px 10px", fontSize: 11, fontFamily: "'Montserrat', sans-serif", fontWeight: 600, background: "rgba(231,76,60,0.08)", color: "#e74c3c", border: "1px solid rgba(231,76,60,0.15)", borderRadius: 6, cursor: "pointer" }}>🗑</button>
                                     </div>
                                   )}
                                 </td>
                               </tr>
+                              {isEdit && (
+                                <tr>
+                                  <td colSpan={5} style={{ padding: "6px 16px 12px", borderBottom: "1px solid rgba(255,255,255,0.03)", background: "rgba(200,169,110,0.03)" }}>
+                                    <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr 1fr 0.5fr", gap: 8 }}>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>CPF</label><input placeholder="000.000.000-00" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cpf} onChange={(e) => {
+                                        let v = e.target.value.replace(/\D/g, "").slice(0, 11);
+                                        if (v.length > 9) v = v.replace(/(\d{3})(\d{3})(\d{3})(\d{1,2})/, "$1.$2.$3-$4");
+                                        else if (v.length > 6) v = v.replace(/(\d{3})(\d{3})(\d{1,3})/, "$1.$2.$3");
+                                        else if (v.length > 3) v = v.replace(/(\d{3})(\d{1,3})/, "$1.$2");
+                                        setEditando({ ...editando, cpf: v });
+                                      }} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>Endereço</label><input placeholder="Rua, nº, complemento" style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.endereco} onChange={(e) => setEditando({ ...editando, endereco: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>Bairro</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.bairro} onChange={(e) => setEditando({ ...editando, bairro: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>Cidade</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.cidade} onChange={(e) => setEditando({ ...editando, cidade: e.target.value })} /></div>
+                                      <div><label style={{ ...lbl, fontSize: 9 }}>UF</label><input style={{ ...inp, padding: "6px 8px", fontSize: 11 }} value={editando.estado} onChange={(e) => setEditando({ ...editando, estado: e.target.value })} maxLength={2} /></div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                              </React.Fragment>
                               );
                             })}
                           </tbody>
